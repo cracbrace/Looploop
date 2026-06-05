@@ -96,7 +96,7 @@ async def convert_novel(request: ConvertRequest):
     task_id = uuid.uuid4().hex[:12]
     title = request.title or "Untitled"
 
-    await create_task(task_id, title)
+    await create_task(task_id, title, original_text=request.text)
     asyncio.create_task(_run_pipeline(task_id, request))
 
     return {"task_id": task_id}
@@ -158,7 +158,9 @@ async def get_screenplay(task_id: str):
         raise HTTPException(status_code=500, detail=task.get("error", "转换失败"))
     if task["status"] != "done":
         return {"status": task["status"], "progress": task["progress"]}
-    return task.get("result", {})
+    result = task.get("result", {})
+    result["_original_text"] = task.get("original_text", "")
+    return result
 
 
 @router.get("/screenplay/{task_id}/export/yaml")
