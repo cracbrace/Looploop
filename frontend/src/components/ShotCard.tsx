@@ -29,17 +29,31 @@ interface ShotCardProps {
   };
   isSelected: boolean;
   onClick: () => void;
+  onRegenerate?: (feedback?: string) => Promise<void>;
 }
 
-export function ShotCard({ shot, isSelected, onClick }: ShotCardProps) {
+export function ShotCard({ shot, isSelected, onClick, onRegenerate }: ShotCardProps) {
+  const [showRegen, setShowRegen] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [loading, setLoading] = useState(false);
   const borderColor = shotTypeColor[shot.shot_type] || "border-l-zinc-600";
+
+  const handleRegen = async () => {
+    if (!onRegenerate) return;
+    setLoading(true);
+    await onRegenerate(feedback || undefined);
+    setLoading(false);
+    setShowRegen(false);
+    setFeedback("");
+  };
 
   return (
     <div
       onClick={onClick}
       className={`bg-zinc-900 border border-zinc-800 rounded-lg p-3 border-l-2 ${borderColor}
         transition-all cursor-pointer hover:border-zinc-600
-        ${isSelected ? "ring-1 ring-emerald-500/50 border-emerald-500/50" : ""}`}
+        ${isSelected ? "ring-1 ring-emerald-500/50 border-emerald-500/50" : ""}
+        ${loading ? "opacity-60 animate-pulse" : ""}`}
     >
       <div className="flex items-center gap-2 mb-1">
         <span className="text-xs font-mono text-zinc-500">{shot.shot_id}</span>
@@ -50,25 +64,57 @@ export function ShotCard({ shot, isSelected, onClick }: ShotCardProps) {
           {shot.camera_movement}
         </span>
         <span className="text-xs text-zinc-500 ml-auto">{shot.duration}</span>
+        {onRegenerate && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowRegen(!showRegen); }}
+            className="text-xs px-1.5 py-0.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700 rounded transition-colors"
+            title="Regenerate this shot"
+          >
+            &#x21bb;
+          </button>
+        )}
       </div>
       <p className="text-xs text-zinc-400 mb-1">Focus: {shot.focus_subject}</p>
       {shot.sfx && <p className="text-xs text-amber-500/70 mb-1">SFX: {shot.sfx}</p>}
       {shot.dialogue ? (
         <p className="text-sm text-zinc-200 mt-2 bg-zinc-800/50 rounded px-2 py-1">
-          <span className="text-emerald-400 font-medium">
-            {shot.dialogue.character}
-          </span>
-          <span className="text-zinc-500 text-xs ml-1">
-            ({shot.dialogue.emotion})
-          </span>
+          <span className="text-emerald-400 font-medium">{shot.dialogue.character}</span>
+          <span className="text-zinc-500 text-xs ml-1">({shot.dialogue.emotion})</span>
           ：{shot.dialogue.line}
         </p>
       ) : (
         <p className="text-xs text-zinc-600 mt-1 italic">No dialogue</p>
       )}
-      <p className="text-xs text-zinc-600 mt-1 truncate">
-        prompt: {shot.visual_prompt}
-      </p>
+      <p className="text-xs text-zinc-600 mt-1 truncate">prompt: {shot.visual_prompt}</p>
+
+      {showRegen && (
+        <div className="mt-2 pt-2 border-t border-zinc-700" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="text"
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="What to change? (e.g. handheld style)"
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs
+                       text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+          />
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={handleRegen}
+              disabled={loading}
+              className="text-xs px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40
+                         rounded transition-colors"
+            >
+              {loading ? "..." : "Regenerate"}
+            </button>
+            <button
+              onClick={() => setShowRegen(false)}
+              className="text-xs px-2 py-0.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

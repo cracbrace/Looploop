@@ -15,6 +15,7 @@ function App() {
     originalText,
     paragraphs,
     startConvert,
+    handleRegenerateShot,
     reset,
   } = useScreenplay();
 
@@ -93,6 +94,7 @@ function App() {
             selectedShotId={selectedShotId}
             onSelectScene={setSelectedSceneIndex}
             onShotClick={handleShotClick}
+            onRegenerateShot={handleRegenerateShot}
           />
           {showSource && (
             <SourcePanel
@@ -216,12 +218,14 @@ function ResultView({
   selectedShotId,
   onSelectScene,
   onShotClick,
+  onRegenerateShot,
 }: {
   screenplay: any;
   selectedSceneIndex: number;
   selectedShotId: string | null;
   onSelectScene: (i: number) => void;
   onShotClick: (id: string) => void;
+  onRegenerateShot: (sceneId: string, shotId: string, feedback?: string) => Promise<void>;
 }) {
   const scene = screenplay.scenes[selectedSceneIndex];
   if (!scene) return <div className="flex-1 p-8 text-zinc-500">No scene data</div>;
@@ -257,6 +261,7 @@ function ResultView({
                 shot={shot}
                 isSelected={shot.shot_id === selectedShotId}
                 onClick={() => onShotClick(shot.shot_id)}
+                onRegenerate={(feedback) => onRegenerateShot(scene.scene_id, shot.shot_id, feedback)}
               />
             ))}
           </div>
