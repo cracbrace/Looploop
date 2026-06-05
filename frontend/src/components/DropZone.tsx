@@ -5,6 +5,9 @@ interface ChapterInfo {
   title: string;
   preview: string;
   selected: boolean;
+  startLine: number;
+  endLine: number;
+  text: string;
 }
 
 interface DropZoneProps {
@@ -23,31 +26,44 @@ export function DropZone({ onChaptersReady, onTextReady, disabled }: DropZonePro
     const lines = raw.split("\n");
     const chapters: ChapterInfo[] = [];
     let currentChapter: ChapterInfo | null = null;
+    let chapterStartLine = 0;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
 
       if (CHAPTER_RE.test(trimmed)) {
-        if (currentChapter) chapters.push(currentChapter);
+        if (currentChapter) {
+          currentChapter.endLine = i;
+          currentChapter.text = lines.slice(currentChapter.startLine, i).join("\n");
+          chapters.push(currentChapter);
+        }
+        chapterStartLine = i;
         currentChapter = {
           index: chapters.length,
           title: trimmed.slice(0, 60),
           preview: "",
           selected: true,
+          startLine: i,
+          endLine: i,
+          text: "",
         };
-      } else if (currentChapter) {
+      } else if (currentChapter && trimmed) {
         if (currentChapter.preview.length < 80) {
           currentChapter.preview += (currentChapter.preview ? " " : "") + trimmed;
         }
       }
     }
-    if (currentChapter) chapters.push(currentChapter);
+    if (currentChapter) {
+      currentChapter.endLine = lines.length;
+      currentChapter.text = lines.slice(currentChapter.startLine, lines.length).join("\n");
+      chapters.push(currentChapter);
+    }
 
     // 未识别到章节 → 全文作为一个章节
     if (chapters.length === 0) {
       chapters.push({
-        index: 0, title: "正文", preview: raw.slice(0, 100).replace(/\n/g, " "), selected: true,
+        index: 0, title: "全文", preview: raw.slice(0, 100).replace(/\n/g, " "),
+        selected: true, startLine: 0, endLine: lines.length, text: raw,
       });
     }
 
