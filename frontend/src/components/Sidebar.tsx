@@ -26,7 +26,7 @@ export function Sidebar({
   onSelectScene,
 }: SidebarProps) {
   return (
-    <aside className="w-60 border-r border-zinc-800 overflow-y-auto p-3 shrink-0">
+    <aside className="overflow-y-auto p-3">
       <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">
         Scenes
       </h3>
