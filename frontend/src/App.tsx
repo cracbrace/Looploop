@@ -169,10 +169,15 @@ function App() {
     if (updated) saveScreenplay(taskId, updated).catch(() => {});
   }, [taskId, updateScreenplay]);
 
+  // 当前场景的所有段落索引 + 选中镜头的段落高亮
+  const sceneParagraphs: number[] = [];
   const highlightedParagraphs: number[] = [];
-  if (screenplay && selectedShotId)
-    for (const s of screenplay.scenes) for (const sh of s.shots)
-      if (sh.shot_id === selectedShotId) highlightedParagraphs.push(...sh.source_paragraphs);
+  if (screenplay && scene) {
+    for (const sh of scene.shots) sceneParagraphs.push(...sh.source_paragraphs);
+    if (selectedShotId)
+      for (const sh of scene.shots)
+        if (sh.shot_id === selectedShotId) highlightedParagraphs.push(...sh.source_paragraphs);
+  }
 
   const selectedShot = screenplay && selectedShotId
     ? screenplay.scenes.flatMap((s: any) => s.shots).find((sh: any) => sh.shot_id === selectedShotId) : null;
@@ -329,7 +334,9 @@ function App() {
                 Source Text (原文对照)
               </span>
               <span className="text-[10px] text-zinc-600">
-                {selectedShotId ? `Paragraphs: ${highlightedParagraphs.join(", ") || "none"}` : "Click a shot to highlight source text"}
+                {selectedShotId
+                  ? `Scene: ${scene.scene_id} · Paragraphs: ${highlightedParagraphs.join(", ") || "none"}`
+                  : `Scene: ${scene.scene_id} · ${sceneParagraphs.length} paragraphs`}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto p-4 font-serif text-sm leading-relaxed text-zinc-400">
@@ -338,7 +345,14 @@ function App() {
               ) : (
                 (() => {
                   const hs = new Set(highlightedParagraphs);
-                  return paragraphs.map((p, i) => (
+                  const sp = new Set(sceneParagraphs);
+                  const filtered = paragraphs
+                    .map((p, i) => ({ p, i }))
+                    .filter(({ i }) => sp.has(i));
+                  if (filtered.length === 0) {
+                    return <p className="text-xs text-zinc-600">No source paragraphs mapped for this scene</p>;
+                  }
+                  return filtered.map(({ p, i }) => (
                     <p key={i}
                       className={`mb-2 px-3 py-1.5 rounded transition-all
                         ${hs.has(i)
@@ -349,7 +363,7 @@ function App() {
                       <span className="text-zinc-600 mr-2 font-mono text-xs align-top">{i}</span>
                       {p}
                     </p>
-                  ));
+                  )));
                 })()
               )}
             </div>
