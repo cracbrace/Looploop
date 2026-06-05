@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
+from backend.routes import router
 
 # Windows 终端 UTF-8 编码修复
 if sys.platform == "win32":
@@ -43,12 +44,4 @@ app.add_middleware(
 )
 
 
-@app.get("/api/health")
-async def health_check():
-    """健康检查"""
-    return {
-        "status": "ok",
-        "app": settings.app_name,
-        "version": settings.app_version,
-        "llm_model": settings.llm_model,
-    }
+app.include_router(router)
