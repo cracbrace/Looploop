@@ -363,7 +363,7 @@ function App() {
                       <span className="text-zinc-600 mr-2 font-mono text-xs align-top">{i}</span>
                       {p}
                     </p>
-                  )));
+                  ));
                 })()
               )}
             </div>
