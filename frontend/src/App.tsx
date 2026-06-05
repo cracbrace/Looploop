@@ -124,94 +124,105 @@ function App() {
         onReset={handleReset} hasScreenplay={true} />
 
       <div className="flex-1 overflow-hidden">
-        <Group direction="horizontal">
-          {/* Panel A: History + Scene Nav */}
-          <Panel defaultSize={18} minSize={12} maxSize={30}>
-            <div className="h-full flex flex-col border-r border-zinc-800">
-              <div className="h-2/5">
-                <HistoryPanel currentTaskId={taskId} onSelect={handleHistorySelect} refreshKey={historyKey} />
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <Group direction="vertical">
-                  <Panel defaultSize={70} minSize={30}>
-                    <Sidebar
-                      scenes={screenplay.scenes}
-                      characters={screenplay.characters}
-                      meta={screenplay.meta}
-                      totalCharacters={screenplay.characters.length}
-                      selectedSceneIndex={selectedSceneIndex}
-                      onSelectScene={setSelectedSceneIndex}
-                    />
-                  </Panel>
-                  <Separator className="h-0.5 hover:h-1 bg-zinc-800 hover:bg-zinc-600 transition-all" />
-                  <Panel defaultSize={30} minSize={15}>
-                    <div className="p-3">
-                      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Shot Detail</h3>
-                      {selectedShot ? (
-                        <div className="space-y-2 text-xs text-zinc-400">
-                          <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
-                          <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
-                          <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
-                          <div><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
-                          {selectedShot.sfx && <div><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
-                          <div className="pt-2 border-t border-zinc-800">
-                            <p className="text-zinc-600 mb-1">Visual Prompt</p>
-                            <p className="text-zinc-300 leading-relaxed">{selectedShot.visual_prompt}</p>
-                          </div>
+        <Group direction="vertical">
+          <Panel defaultSize={72} minSize={40}>
+            <Group direction="horizontal">
+              {/* Panel A: History + Scene Nav — 40% default */}
+              <Panel defaultSize={40} minSize={20} maxSize={55}>
+                <div className="h-full flex flex-col border-r border-zinc-800">
+                  <div className="h-2/5 min-h-[120px]">
+                    <HistoryPanel currentTaskId={taskId} onSelect={handleHistorySelect} refreshKey={historyKey} />
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <Group direction="vertical">
+                      <Panel defaultSize={65} minSize={25}>
+                        <Sidebar
+                          scenes={screenplay.scenes}
+                          characters={screenplay.characters}
+                          meta={screenplay.meta}
+                          totalCharacters={screenplay.characters.length}
+                          selectedSceneIndex={selectedSceneIndex}
+                          onSelectScene={setSelectedSceneIndex}
+                        />
+                      </Panel>
+                      <Separator className="h-[6px] bg-zinc-900 hover:bg-emerald-600/30 transition-colors cursor-row-resize
+                        flex items-center justify-center" />
+                      <Panel defaultSize={35} minSize={15}>
+                        <div className="p-3">
+                          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Shot Detail</h3>
+                          {selectedShot ? (
+                            <div className="space-y-2 text-xs text-zinc-400">
+                              <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
+                              <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
+                              <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
+                              <div><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
+                              {selectedShot.sfx && <div><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
+                              <div className="pt-2 border-t border-zinc-800">
+                                <p className="text-zinc-600 mb-1">Visual Prompt</p>
+                                <p className="text-zinc-300 leading-relaxed">{selectedShot.visual_prompt}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-zinc-600">Click a shot to see details</p>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-xs text-zinc-600">Click a shot to see details</p>
-                      )}
-                    </div>
-                  </Panel>
-                </Group>
+                      </Panel>
+                    </Group>
+                  </div>
+                </div>
+              </Panel>
+
+              {/* Separator: A | B — 6px wide hit area, 1px visual line */}
+              <div className="w-[6px] cursor-col-resize bg-transparent hover:bg-emerald-600/30 transition-colors shrink-0 relative group">
+                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-zinc-700 group-hover:bg-emerald-500/70" />
               </div>
-            </div>
+
+              {/* Panel B: Main screenplay content — 60% default */}
+              <Panel defaultSize={60} minSize={30}>
+                <div className="h-full overflow-y-auto p-6">
+                  <div className="max-w-3xl mx-auto">
+                    {!scene ? (
+                      <div className="text-zinc-500 p-8 text-center">Select a scene from the left panel</div>
+                    ) : (
+                      <>
+                        <div className="mb-6">
+                          <h2 className="text-lg font-semibold mb-1">
+                            {scene.scene_id} &middot; {scene.location}
+                          </h2>
+                          <p className="text-xs text-zinc-500">
+                            {scene.time_of_day} &middot; {scene.atmosphere}
+                            {scene.era && <span> &middot; {scene.era}</span>}
+                            {scene.weather && <span> &middot; {scene.weather}</span>}
+                            <span className="ml-2 text-zinc-600">| {scene.duration_estimate}</span>
+                          </p>
+                        </div>
+                        <div className="space-y-3">
+                          {scene.shots.map((shot: any) => (
+                            <ShotCard key={shot.shot_id} shot={shot}
+                              isSelected={shot.shot_id === selectedShotId}
+                              onClick={() => handleShotClick(shot.shot_id)}
+                              onRegenerate={(feedback) => handleRegenerateShot(scene.scene_id, shot.shot_id, feedback)}
+                              onEdit={(field, value) => handleShotEdit(scene.scene_id, shot.shot_id, field, value)}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </Panel>
+            </Group>
           </Panel>
 
-          <Separator className="w-1 hover:w-1.5 bg-transparent hover:bg-emerald-600/50 transition-all cursor-col-resize" />
+          {/* Panel D 拖拽手柄 — 顶部"︿"可向上伸展 */}
+          <div className="h-[8px] bg-zinc-900 hover:bg-emerald-600/30 transition-colors cursor-row-resize shrink-0 flex items-center justify-center group">
+            <div className="h-[2px] w-12 bg-zinc-600 group-hover:bg-emerald-500/70 group-hover:w-20 transition-all rounded-full" />
+          </div>
 
-          {/* Panel B: Main screenplay content */}
-          <Panel defaultSize={62} minSize={35}>
-            <div className="h-full flex flex-col">
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="max-w-3xl mx-auto">
-                  {!scene ? (
-                    <div className="text-zinc-500 p-8 text-center">Select a scene from the left panel</div>
-                  ) : (
-                    <>
-                      <div className="mb-6">
-                        <h2 className="text-lg font-semibold mb-1">
-                          {scene.scene_id} &middot; {scene.location}
-                        </h2>
-                        <p className="text-xs text-zinc-500">
-                          {scene.time_of_day} &middot; {scene.atmosphere}
-                          {scene.era && <span> &middot; {scene.era}</span>}
-                          {scene.weather && <span> &middot; {scene.weather}</span>}
-                          <span className="ml-2 text-zinc-600">| {scene.duration_estimate}</span>
-                        </p>
-                      </div>
-                      <div className="space-y-3">
-                        {scene.shots.map((shot: any) => (
-                          <ShotCard key={shot.shot_id} shot={shot}
-                            isSelected={shot.shot_id === selectedShotId}
-                            onClick={() => handleShotClick(shot.shot_id)}
-                            onRegenerate={(feedback) => handleRegenerateShot(scene.scene_id, shot.shot_id, feedback)}
-                            onEdit={(field, value) => handleShotEdit(scene.scene_id, shot.shot_id, field, value)}
-                          />
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Panel D: Source text (bottom) */}
-              {showSource && (
-                <SourcePanel paragraphs={paragraphs} highlightedParagraphs={highlightedParagraphs}
-                  onClose={() => setShowSource(false)} />
-              )}
-            </div>
+          {/* Panel D: SourcePanel — 可拖拽调整高度 */}
+          <Panel defaultSize={28} minSize={8} maxSize={50}>
+            <SourcePanel paragraphs={paragraphs} highlightedParagraphs={highlightedParagraphs}
+              onClose={() => setShowSource(false)} visible={showSource} />
           </Panel>
         </Group>
       </div>
