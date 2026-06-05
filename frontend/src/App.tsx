@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useScreenplay } from "./hooks/useScreenplay";
+import { ShotCard } from "./components/ShotCard";
 
 function App() {
   const {
@@ -15,6 +16,14 @@ function App() {
 
   const [inputText, setInputText] = useState("");
   const [showInput, setShowInput] = useState(true);
+  const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
+
+  const handleShotClick = useCallback(
+    (shotId: string) => {
+      setSelectedShotId(selectedShotId === shotId ? null : shotId);
+    },
+    [selectedShotId]
+  );
 
   const handleStart = () => {
     if (inputText.trim().length < 100) return;
@@ -62,7 +71,9 @@ function App() {
         <ResultView
           screenplay={screenplay}
           selectedSceneIndex={selectedSceneIndex}
+          selectedShotId={selectedShotId}
           onSelectScene={setSelectedSceneIndex}
+          onShotClick={handleShotClick}
         />
       ) : (
         <LoadingView
@@ -175,11 +186,15 @@ function LoadingView({
 function ResultView({
   screenplay,
   selectedSceneIndex,
+  selectedShotId,
   onSelectScene,
+  onShotClick,
 }: {
   screenplay: any;
   selectedSceneIndex: number;
+  selectedShotId: string | null;
   onSelectScene: (i: number) => void;
+  onShotClick: (id: string) => void;
 }) {
   const scene = screenplay.scenes[selectedSceneIndex];
   if (!scene) return <div className="flex-1 p-8 text-zinc-500">No scene data</div>;
@@ -234,25 +249,14 @@ function ResultView({
             {scene.time_of_day} &middot; {scene.atmosphere}
           </p>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {scene.shots.map((shot: any) => (
-              <div
+              <ShotCard
                 key={shot.shot_id}
-                className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm"
-              >
-                <span className="text-zinc-500 font-mono text-xs">{shot.shot_id}</span>
-                <span className="ml-2 text-zinc-300">{shot.shot_type} &middot; {shot.camera_movement}</span>
-                <span className="ml-2 text-zinc-500 text-xs">{shot.duration}</span>
-                <p className="text-zinc-400 text-xs mt-1">Focus: {shot.focus_subject}</p>
-                {shot.dialogue ? (
-                  <p className="text-zinc-200 text-sm mt-1 bg-zinc-800/50 rounded px-2 py-0.5">
-                    <span className="text-emerald-400">{shot.dialogue.character}</span>
-                    : {shot.dialogue.line}
-                  </p>
-                ) : (
-                  <p className="text-zinc-600 text-xs mt-1 italic">No dialogue</p>
-                )}
-              </div>
+                shot={shot}
+                isSelected={shot.shot_id === selectedShotId}
+                onClick={() => onShotClick(shot.shot_id)}
+              />
             ))}
           </div>
         </div>
