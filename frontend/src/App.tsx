@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useScreenplay } from "./hooks/useScreenplay";
 import { ShotCard } from "./components/ShotCard";
 import { Sidebar } from "./components/Sidebar";
 import { SourcePanel } from "./components/SourcePanel";
-import { getYamlUrl, getWordUrl } from "./api/client";
+import { getYamlUrl, getWordUrl, getScreenplay } from "./api/client";
+import { HistoryPanel } from "./components/HistoryPanel";
 
 function App() {
   const {
@@ -17,12 +18,25 @@ function App() {
     paragraphs,
     startConvert,
     handleRegenerateShot,
+    loadFromHistory,
     taskId,
     reset,
   } = useScreenplay();
 
   const [inputText, setInputText] = useState("");
   const [showExport, setShowExport] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
+
+  const handleHistorySelect = useCallback(async (historyTaskId: string) => {
+    setShowInput(false);
+    setSelectedShotId(null);
+    setShowSource(false);
+    await loadFromHistory(historyTaskId);
+  }, [loadFromHistory, setSelectedShotId]);
+
+  useEffect(() => {
+    if (status === "done") setHistoryKey((k) => k + 1);
+  }, [status]);
   const [showInput, setShowInput] = useState(true);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
@@ -122,6 +136,9 @@ function App() {
             onSelectScene={setSelectedSceneIndex}
             onShotClick={handleShotClick}
             onRegenerateShot={handleRegenerateShot}
+            taskId={taskId}
+            historyKey={historyKey}
+            onHistorySelect={handleHistorySelect}
           />
           {showSource && (
             <SourcePanel
@@ -246,6 +263,9 @@ function ResultView({
   onSelectScene,
   onShotClick,
   onRegenerateShot,
+  taskId,
+  historyKey,
+  onHistorySelect,
 }: {
   screenplay: any;
   selectedSceneIndex: number;
@@ -253,6 +273,9 @@ function ResultView({
   onSelectScene: (i: number) => void;
   onShotClick: (id: string) => void;
   onRegenerateShot: (sceneId: string, shotId: string, feedback?: string) => Promise<void>;
+  taskId: string | null;
+  historyKey: number;
+  onHistorySelect: (taskId: string) => void;
 }) {
   if (!screenplay.scenes || screenplay.scenes.length === 0) {
     return <div className="flex-1 p-8 text-zinc-500">No scenes in screenplay data</div>;
@@ -262,14 +285,25 @@ function ResultView({
 
   return (
     <div className="flex-1 flex overflow-hidden">
-      <Sidebar
-        scenes={screenplay.scenes}
-        characters={screenplay.characters}
-        meta={screenplay.meta}
-        totalCharacters={screenplay.characters.length}
-        selectedSceneIndex={selectedSceneIndex}
-        onSelectScene={onSelectScene}
-      />
+      <div className="w-60 border-r border-zinc-800 flex flex-col shrink-0">
+        <div className="h-48">
+          <HistoryPanel
+            currentTaskId={taskId}
+            onSelect={handleHistorySelect}
+            refreshKey={historyKey}
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <Sidebar
+            scenes={screenplay.scenes}
+            characters={screenplay.characters}
+            meta={screenplay.meta}
+            totalCharacters={screenplay.characters.length}
+            selectedSceneIndex={selectedSceneIndex}
+            onSelectScene={onSelectScene}
+          />
+        </div>
+      </div>
 
       {/* Right: current scene shots as plain divs */}
       <main className="flex-1 overflow-y-auto p-4">
