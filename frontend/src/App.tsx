@@ -4,6 +4,7 @@ import { ShotCard } from "./components/ShotCard";
 import { Sidebar } from "./components/Sidebar";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { DropZone, ChapterTree } from "./components/DropZone";
+import { LogDrawer } from "./components/LogDrawer";
 import { getYamlUrl, getWordUrl, saveScreenplay } from "./api/client";
 
 const LEFT_MIN = 240;
@@ -27,6 +28,9 @@ function App() {
   const [showInput, setShowInput] = useState(true);
   const [showExport, setShowExport] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+  const [logOpen, setLogOpen] = useState(false);
+  const [pipelineLogs, setPipelineLogs] = useState<Array<{ id: number; level: "info"|"warn"|"error"; message: string; time: string }>>([]);
+  const logIdRef = useRef(0);
 
   // 左侧面板像素宽度
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -76,7 +80,18 @@ function App() {
     document.addEventListener("mouseup", onUp);
   }, [bottomHeight]);
 
-  const handleStart = () => { if (inputText.trim().length < 100) return; setShowInput(false); startConvert(inputText); };
+  const handleStart = () => {
+    if (inputText.trim().length < 100) return;
+    setShowInput(false);
+    setPipelineLogs([]);
+    logIdRef.current = 0;
+    startConvert(inputText, (logMsg: string) => {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
+      const level: "info"|"warn"|"error" = logMsg.includes("失败") || logMsg.includes("Error") ? "error" : logMsg.includes("合并") || logMsg.includes("新增") ? "warn" : "info";
+      setPipelineLogs((prev) => [...prev, { id: ++logIdRef.current, level, message: logMsg, time }]);
+    });
+  };
   const handleReset = () => { reset(); setShowInput(true); setInputText(""); };
   const handleShotClick = useCallback((id: string) => setSelectedShotId(selectedShotId === id ? null : id), [selectedShotId, setSelectedShotId]);
   const handleHistorySelect = useCallback(async (id: string) => { setShowInput(false); setSelectedShotId(null); await loadFromHistory(id); }, [loadFromHistory, setSelectedShotId]);
@@ -149,6 +164,7 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-[#050505] text-zinc-200" ref={containerRef}>
       <Header status={status} msg={progressMessage} hasSP={true} showExport={showExport} setShowExport={setShowExport} taskId={taskId} onReset={handleReset} />
+      <LogDrawer logs={pipelineLogs} open={logOpen} onToggle={() => setLogOpen(!logOpen)} onClear={() => setPipelineLogs([])} />
 
       <div className="flex-1 flex overflow-hidden">
         {/* ═══════════════════════════════════════════════════════ */}

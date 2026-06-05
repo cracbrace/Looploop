@@ -30,7 +30,7 @@ export function useScreenplay() {
   const [paragraphs, setParagraphs] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
-  const startConvert = useCallback(async (text: string) => {
+  const startConvert = useCallback(async (text: string, onLog?: (msg: string) => void) => {
     setStatus("pending");
     setProgressMessage("正在提交...");
     setProgress(0);
@@ -50,6 +50,9 @@ export function useScreenplay() {
           setStatus(stage.stage as PipelineStatus);
           setProgressMessage(stage.message);
           setProgress(stage.progress);
+          if (stage.logs && onLog) {
+            stage.logs.forEach((msg) => onLog(msg));
+          }
         },
         async () => {
           // Done — fetch the result
