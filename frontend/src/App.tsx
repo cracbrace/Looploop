@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useScreenplay } from "./hooks/useScreenplay";
 import { ShotCard } from "./components/ShotCard";
 import { Sidebar } from "./components/Sidebar";
+import { SourcePanel } from "./components/SourcePanel";
 
 function App() {
   const {
@@ -11,6 +12,8 @@ function App() {
     progress,
     selectedSceneIndex,
     setSelectedSceneIndex,
+    originalText,
+    paragraphs,
     startConvert,
     reset,
   } = useScreenplay();
@@ -18,13 +21,27 @@ function App() {
   const [inputText, setInputText] = useState("");
   const [showInput, setShowInput] = useState(true);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
+  const [showSource, setShowSource] = useState(false);
 
   const handleShotClick = useCallback(
     (shotId: string) => {
-      setSelectedShotId(selectedShotId === shotId ? null : shotId);
+      const newId = selectedShotId === shotId ? null : shotId;
+      setSelectedShotId(newId);
+      if (newId) setShowSource(true);
     },
     [selectedShotId]
   );
+
+  const highlightedParagraphs: number[] = [];
+  if (screenplay && selectedShotId) {
+    for (const scene of screenplay.scenes) {
+      for (const shot of scene.shots) {
+        if (shot.shot_id === selectedShotId) {
+          highlightedParagraphs.push(...shot.source_paragraphs);
+        }
+      }
+    }
+  }
 
   const handleStart = () => {
     if (inputText.trim().length < 100) return;
@@ -69,13 +86,22 @@ function App() {
           progressMessage={progressMessage}
         />
       ) : screenplay ? (
-        <ResultView
-          screenplay={screenplay}
-          selectedSceneIndex={selectedSceneIndex}
-          selectedShotId={selectedShotId}
-          onSelectScene={setSelectedSceneIndex}
-          onShotClick={handleShotClick}
-        />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <ResultView
+            screenplay={screenplay}
+            selectedSceneIndex={selectedSceneIndex}
+            selectedShotId={selectedShotId}
+            onSelectScene={setSelectedSceneIndex}
+            onShotClick={handleShotClick}
+          />
+          {showSource && (
+            <SourcePanel
+              paragraphs={paragraphs}
+              highlightedParagraphs={highlightedParagraphs}
+              onClose={() => setShowSource(false)}
+            />
+          )}
+        </div>
       ) : (
         <LoadingView
           progress={progress}
