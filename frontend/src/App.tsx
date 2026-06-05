@@ -3,6 +3,7 @@ import { useScreenplay } from "./hooks/useScreenplay";
 import { ShotCard } from "./components/ShotCard";
 import { Sidebar } from "./components/Sidebar";
 import { SourcePanel } from "./components/SourcePanel";
+import { getYamlUrl, getWordUrl } from "./api/client";
 
 function App() {
   const {
@@ -16,10 +17,12 @@ function App() {
     paragraphs,
     startConvert,
     handleRegenerateShot,
+    taskId,
     reset,
   } = useScreenplay();
 
   const [inputText, setInputText] = useState("");
+  const [showExport, setShowExport] = useState(false);
   const [showInput, setShowInput] = useState(true);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
@@ -67,12 +70,36 @@ function App() {
             <span className="text-xs text-zinc-400">{progressMessage}</span>
           )}
           {screenplay && (
-            <button
-              onClick={handleReset}
-              className="text-xs px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 transition-colors"
-            >
-              New
-            </button>
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => setShowExport(!showExport)}
+                  className="text-xs px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 transition-colors"
+                >
+                  Export
+                </button>
+                {showExport && taskId && (
+                  <div className="absolute right-0 top-8 w-44 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
+                    <a href={getYamlUrl(taskId)}
+                       className="block px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors"
+                       onClick={() => setShowExport(false)}>
+                      Export YAML (AI Pipeline)
+                    </a>
+                    <a href={getWordUrl(taskId)}
+                       className="block px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors"
+                       onClick={() => setShowExport(false)}>
+                      Export Word (Edit)
+                    </a>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleReset}
+                className="text-xs px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 transition-colors"
+              >
+                New
+              </button>
+            </>
           )}
         </div>
       </header>
