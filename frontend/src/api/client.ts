@@ -112,3 +112,28 @@ export function getYamlUrl(taskId: string): string {
 export function getWordUrl(taskId: string): string {
   return `${BASE}/screenplay/${taskId}/export/word`;
 }
+
+export async function fetchHistory(): Promise<
+  Array<{ task_id: string; title: string; status: string; created_at: string }>
+> {
+  const res = await fetch(`${BASE}/tasks`);
+  if (!res.ok) throw new Error("Failed to fetch history");
+  return res.json();
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  const res = await fetch(`${BASE}/tasks/${taskId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete task");
+}
+
+export async function saveScreenplay(
+  taskId: string,
+  screenplay: Screenplay
+): Promise<void> {
+  const res = await fetch(`${BASE}/screenplay/${taskId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ screenplay }),
+  });
+  if (!res.ok) throw new Error("Failed to save screenplay");
+}

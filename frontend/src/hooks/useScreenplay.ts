@@ -79,6 +79,27 @@ export function useScreenplay() {
     setStatus("idle");
   }, []);
 
+  const loadFromHistory = useCallback(async (historyTaskId: string) => {
+    setStatus("pending");
+    setProgressMessage("Loading from history...");
+    try {
+      const sp = await getScreenplay(historyTaskId);
+      if (sp && sp.meta) {
+        setScreenplay(sp);
+        setTaskId(historyTaskId);
+        setStatus("done");
+        setProgress(1.0);
+        setSelectedSceneIndex(0);
+      } else {
+        setStatus("error");
+        setProgressMessage("Screenplay data is empty or invalid");
+      }
+    } catch (err) {
+      setStatus("error");
+      setProgressMessage(err instanceof Error ? err.message : "Failed to load");
+    }
+  }, []);
+
   const handleRegenerateShot = useCallback(
     async (
       sceneId: string,
@@ -142,6 +163,7 @@ export function useScreenplay() {
     startConvert,
     cancelConvert,
     handleRegenerateShot,
+    loadFromHistory,
     reset,
   };
 }
