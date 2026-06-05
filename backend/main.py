@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
+from backend.database import init_db
 from backend.routes import router
 
 # Windows 终端 UTF-8 编码修复
@@ -24,6 +25,8 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     print(f"[Looploop] {settings.app_name} v{settings.app_version} starting...")
     print(f"[Looploop] LLM: {settings.llm_model} @ {settings.llm_base_url}")
+    await init_db()
+    print(f"[Looploop] Database initialized")
     yield
     print(f"[Looploop] {settings.app_name} shutdown")
 
