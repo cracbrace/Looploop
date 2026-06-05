@@ -172,8 +172,6 @@ class ChapterExtractor:
         if character_registry:
             registry_entries = []
             for cid, char in character_registry.items():
-                name = char.get("canonical_name", cid)
-                aliases = char.get("aliases", [])
                 if isinstance(char, dict):
                     name = char.get("canonical_name", cid)
                     aliases = char.get("aliases", [])
