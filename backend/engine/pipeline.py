@@ -32,6 +32,7 @@ class PipelineStage:
     message: str         # 用户可读的消息
     progress: float      # 0.0 ~ 1.0
     data: dict = field(default_factory=dict)
+    logs: list[str] = field(default_factory=list)  # v0.3: 结构化日志
 
 
 # ============================================================
@@ -162,6 +163,7 @@ class Pipeline:
             message=f"文本切分完成，共 {len(chunks)} 段",
             progress=0.10,
             data={"chunks": len(chunks)},
+            logs=[f"[TextSplitter] 识别到 {len(set(c.chapter_index for c in chunks))} 个章节, 切分为 {len(chunks)} 个 Chunk"],
         )
 
         # Step 2-3: 渐进式提取 + 增量角色消歧
@@ -218,6 +220,7 @@ class Pipeline:
                         message=log_msg,
                         progress=0.15 + 0.50 * (batch_end / total_chunks),
                         data={"log": log_msg, "characters": len(registry)},
+                        logs=[log_msg],
                     )
 
             # 进度
