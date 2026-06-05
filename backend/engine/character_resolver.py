@@ -133,6 +133,93 @@ class CharacterResolver:
         )
         return header + "\n".join(entries) + "\n"
 
+    async def resolve_incremental(
+        self,
+        existing_registry: dict[str, ResolvedCharacter],
+        new_characters: list[str],
+        context_text: str = "",
+    ) -> tuple[dict[str, ResolvedCharacter], list[str]]:
+        """
+        增量消歧：将新发现的角色合并到已有注册表中。
+
+        每处理完几个 chunk 调用一次，渐进式构建角色字典。
+        返回 (更新后的 registry, 日志消息列表)。
+
+        Args:
+            existing_registry: 当前已有的角色注册表
+            new_characters: 本批 chunk 中新发现的角色名列表
+            context_text: 本批 chunk 的文本片段（用于 LLM 消歧上下文）
+
+        Returns:
+            (updated_registry, log_messages)
+        """
+        logs = []
+        if not new_characters:
+            return existing_registry, logs
+
+        # 过滤已在 registry 中的（canonical_name 或 aliases 匹配）
+        truly_new = []
+        for name in new_characters:
+            name_clean = name.strip()
+            if not name_clean:
+                continue
+            found = False
+            for cid, char in existing_registry.items():
+                if name_clean == char.canonical_name or name_clean in char.aliases:
+                    found = True
+                    break
+            if not found:
+                truly_new.append(name_clean)
+
+        if not truly_new:
+            return existing_registry, logs
+
+        # 对真正新的角色做消歧
+        # 快速规则：检查是否可能属于已有角色的别名
+        for name in truly_new[:]:
+            for cid, char in existing_registry.items():
+                # 姓氏+职务匹配 (如 "王队" 已有 "王建国")
+                if len(name) <= 3 and name[0] == char.canonical_name[0]:
+                    # 用 LLM 确认
+                    confirm = await self._confirm_alias(name, char.canonical_name, context_text)
+                    if confirm:
+                        char.aliases.append(name)
+                        char.aliases = list(set(char.aliases))
+                        logs.append(f'[CharacterResolver] 合并 "{name}" → "{char.canonical_name}" ({cid})')
+                        truly_new.remove(name)
+                        break
+
+        # 对于仍无法匹配的，作为全新角色添加
+        for name in truly_new:
+            cid = f"char_{len(existing_registry):03d}"
+            existing_registry[cid] = ResolvedCharacter(
+                canonical_name=name,
+                aliases=[],
+                description="",
+                role_type="supporting",
+                gender="other",
+                age_range="unknown",
+            )
+            logs.append(f'[CharacterResolver] 新增角色: "{name}" ({cid})')
+
+        return existing_registry, logs
+
+    async def _confirm_alias(self, alias: str, canonical: str, context: str) -> bool:
+        """用 LLM 判断 alias 是否是 canonical 的别名"""
+        prompt = f"""在以下上下文中，"{
+        alias}" 和 "{canonical}" 是否指向同一个人？
+
+上下文：{context[:300]}
+
+请只输出 JSON: {{"same_person": true}} 或 {{"same_person": false}}"""
+        try:
+            result = await self.llm.generate_json(prompt, temperature=0.1)
+            import json
+            return json.loads(result).get("same_person", False)
+        except Exception:
+            # 简单启发式：姓氏相同 + 字符数 ≤ 3 → 可能是别名
+            return len(alias) <= 3 and alias[0] == canonical[0]
+
     def resolve_alias(self, name: str, registry: dict[str, ResolvedCharacter]) -> str | None:
         """
         将角色名（可能是别名）解析为 canonical_name。

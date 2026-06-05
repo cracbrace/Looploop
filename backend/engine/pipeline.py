@@ -84,49 +84,44 @@ class Pipeline:
         if not chunks:
             raise ValueError("文本切分后无有效内容，请检查输入文本长度。")
 
-        # Step 2: 第一遍角色提取（全文扫描）
-        first_pass_fragments = "\n\n".join(
-            c.text[:500] for c in chunks[:3]  # 取前 3 段做角色初筛
-        )
-        initial_registry = await self.resolver.resolve(first_pass_fragments)
-
-        # Step 3: 并发逐段提取
-        async def extract_chunk(chunk):
-            return await self.extractor.extract(
-                chunk_text=chunk.text,
-                chunk_id=chunk.chunk_id,
-                chapter_index=chunk.chapter_index,
-                character_registry=initial_registry,
-            )
-
-        extraction_results: list[ExtractionResult] = await asyncio.gather(
-            *[extract_chunk(c) for c in chunks]
-        )
-
-        # 收集所有发现的角色名
-        all_found_characters = []
-        for result in extraction_results:
-            if result:
-                all_found_characters.extend(result.characters_found)
-
-        # Step 4: 精化角色消歧
-        refined_registry = await self.resolver.resolve(
-            text,
-            characters_found=all_found_characters,
-        )
-
-        # Step 5: 收集所有 RawScene
+        # Step 2-3: 渐进式提取 + 增量角色消歧
+        BATCH_SIZE = 3
+        registry: dict = {}
         all_raw_scenes = []
-        for result in extraction_results:
-            if result:
-                all_raw_scenes.extend(result.scenes)
 
-        # Step 6: 场景合并
-        scenes = self.merger.merge(all_raw_scenes, refined_registry)
+        for batch_start in range(0, len(chunks), BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, len(chunks))
+            batch = chunks[batch_start:batch_end]
 
-        # Step 7: 组装最终 Screenplay
+            # 并发提取本批次
+            async def extract_one(chunk):
+                return await self.extractor.extract(
+                    chunk_text=chunk.text, chunk_id=chunk.chunk_id,
+                    chapter_index=chunk.chapter_index,
+                    character_registry=registry if registry else None,
+                )
+            batch_results = await asyncio.gather(*[extract_one(c) for c in batch])
+
+            # 收集 RawScene + 新角色
+            batch_characters = []
+            for r in batch_results:
+                if r:
+                    all_raw_scenes.extend(r.scenes)
+                    batch_characters.extend(r.characters_found)
+
+            # 增量消歧
+            if batch_characters:
+                batch_text = " ".join(c.text[:300] for c in batch)
+                registry, _ = await self.resolver.resolve_incremental(
+                    registry, batch_characters, batch_text
+                )
+
+        # Step 4: 场景合并
+        scenes = self.merger.merge(all_raw_scenes, registry)
+
+        # Step 5: 组装最终 Screenplay
         screenplay = self.merger.build_screenplay(
-            scenes, refined_registry, meta_overrides
+            scenes, registry, meta_overrides
         )
 
         elapsed = time.time() - t0
@@ -169,76 +164,78 @@ class Pipeline:
             data={"chunks": len(chunks)},
         )
 
-        # Step 2: 角色初筛
-        yield PipelineStage(
-            stage="characters_pass1",
-            message="正在扫描全文，识别角色...",
-            progress=0.15,
-        )
-        first_pass_text = "\n\n".join(c.text[:500] for c in chunks[:3])
-        initial_registry = await self.resolver.resolve(first_pass_text)
-        yield PipelineStage(
-            stage="characters_pass1",
-            message=f"角色初筛完成，发现 {len(initial_registry)} 个角色",
-            progress=0.25,
-            data={"characters": len(initial_registry)},
-        )
+        # Step 2-3: 渐进式提取 + 增量角色消歧
+        # 将 chunks 分批，每批 3 个。每批完成后做增量消歧，
+        # 更新后的 registry 作为 few-shot 注入下一批。
+        BATCH_SIZE = 3
+        registry: dict = {}
+        ordered_results: list = []
+        total_chunks = len(chunks)
 
-        # Step 3: 逐段提取（并发 + 进度回报）
-        yield PipelineStage(
-            stage="extracting",
-            message=f"正在逐段提取场景和镜头（共 {len(chunks)} 段）...",
-            progress=0.30,
-        )
+        for batch_start in range(0, total_chunks, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_chunks)
+            batch = chunks[batch_start:batch_end]
+            batch_num = batch_start // BATCH_SIZE + 1
+            total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
 
-        async def extract_with_tracking(chunk, index: int):
-            result = await self.extractor.extract(
-                chunk_text=chunk.text,
-                chunk_id=chunk.chunk_id,
-                chapter_index=chunk.chapter_index,
-                character_registry=initial_registry,
-            )
-            return (index, result)
-
-        # 并发执行，但通过 gather 等待全部完成
-        tasks = [extract_with_tracking(c, i) for i, c in enumerate(chunks)]
-        extraction_results: list[ExtractionResult] = []
-        completed = 0
-        for coro in asyncio.as_completed(tasks):
-            idx, result = await coro
-            extraction_results.append((idx, result))
-            completed += 1
-            progress = 0.30 + 0.30 * (completed / len(chunks))
             yield PipelineStage(
                 stage="extracting",
-                message=f"正在提取场景和镜头... {completed}/{len(chunks)}",
-                progress=progress,
-                data={"completed": completed, "total": len(chunks)},
+                message=f"正在提取: 第 {batch_num}/{total_batches} 批 "
+                        f"({batch_start+1}-{batch_end}/{total_chunks} 段)...",
+                progress=0.15 + 0.50 * (batch_start / total_chunks),
+                data={"batch": batch_num, "total_batches": total_batches},
             )
 
-        # 按原始顺序排序
-        extraction_results.sort(key=lambda x: x[0])
-        ordered_results = [r for _, r in extraction_results]
+            # 并发提取当前批次
+            async def extract_one(chunk, idx: int):
+                return idx, await self.extractor.extract(
+                    chunk_text=chunk.text,
+                    chunk_id=chunk.chunk_id,
+                    chapter_index=chunk.chapter_index,
+                    character_registry=registry if registry else None,
+                )
 
-        # 收集角色
-        all_found = []
-        for r in ordered_results:
-            if r:
-                all_found.extend(r.characters_found)
+            batch_tasks = [extract_one(c, batch_start + i) for i, c in enumerate(batch)]
+            batch_results = await asyncio.gather(*batch_tasks)
+            batch_results.sort(key=lambda x: x[0])
+            ordered_results.extend(batch_results)
 
-        # Step 4: 精化角色消歧
-        yield PipelineStage(
-            stage="characters_refine",
-            message="正在合并角色别名，构建全局角色字典...",
-            progress=0.65,
-        )
-        refined_registry = await self.resolver.resolve(
-            text, characters_found=all_found
-        )
+            # 收集本批新角色
+            batch_characters = []
+            for _, result in batch_results:
+                if result:
+                    batch_characters.extend(result.characters_found)
+
+            # 增量消歧
+            if batch_characters:
+                batch_text = " ".join(c.text[:300] for c in batch)
+                registry, logs = await self.resolver.resolve_incremental(
+                    registry, batch_characters, batch_text
+                )
+                for log_msg in logs:
+                    yield PipelineStage(
+                        stage="character_update",
+                        message=log_msg,
+                        progress=0.15 + 0.50 * (batch_end / total_chunks),
+                        data={"log": log_msg, "characters": len(registry)},
+                    )
+
+            # 进度
+            pct = 0.15 + 0.50 * (batch_end / total_chunks)
+            yield PipelineStage(
+                stage="extracting",
+                message=f"第 {batch_num}/{total_batches} 批完成 "
+                        f"({len(registry)} 个角色已识别)",
+                progress=pct,
+                data={"completed": batch_end, "total": total_chunks,
+                      "characters": len(registry)},
+            )
+
+        refined_registry = registry
         yield PipelineStage(
             stage="characters_refine",
             message=f"角色消歧完成，共 {len(refined_registry)} 个唯一角色",
-            progress=0.75,
+            progress=0.70,
             data={"characters": len(refined_registry)},
         )
 
