@@ -115,6 +115,7 @@ export interface PipelineStage {
   message: string;
   progress: number;
   data?: Record<string, unknown>;
+  logs?: string[];
 }
 
 export type PipelineStatus =
