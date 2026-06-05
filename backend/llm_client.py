@@ -234,16 +234,10 @@ class LLMClient:
 
     @staticmethod
     def estimate_tokens(text: str) -> int:
-        """
-        估算文本的 token 数。
-
-        粗略估算：中文约 1.5 字符/token，英文约 4 字符/token。
-        用于文本切分时判断是否需要继续切分。
-        """
-        # 简单混合估算：总字符数 / 2（折中）
-        return max(1, len(text) // 2)
-
-    @staticmethod
-    def estimate_chinese_tokens(text: str) -> int:
-        """专门针对中文文本的 token 估算（更保守）"""
-        return max(1, int(len(text) / 1.5))
+        """用 tiktoken 精准计算 token 数（cl100k_base 编码器）"""
+        try:
+            import tiktoken
+            enc = tiktoken.get_encoding("cl100k_base")
+            return len(enc.encode(text))
+        except Exception:
+            return max(1, len(text) // 2)

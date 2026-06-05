@@ -294,5 +294,10 @@ class TextSplitter:
 
     @staticmethod
     def _estimate_tokens(text: str) -> int:
-        """中文文本 token 粗略估算"""
-        return max(1, int(len(text) / 1.5))
+        """用 tiktoken 精准计算 token 数"""
+        try:
+            import tiktoken
+            enc = tiktoken.get_encoding("cl100k_base")
+            return len(enc.encode(text))
+        except Exception:
+            return max(1, int(len(text) / 1.5))
