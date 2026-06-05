@@ -249,7 +249,7 @@ class Pipeline:
             progress=0.80,
         )
         all_raw_scenes = []
-        for r in ordered_results:
+        for _, r in ordered_results:
             if r:
                 all_raw_scenes.extend(r.scenes)
 
