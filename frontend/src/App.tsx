@@ -5,10 +5,12 @@ import { Sidebar } from "./components/Sidebar";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { getYamlUrl, getWordUrl, saveScreenplay } from "./api/client";
 
-// 左侧面板像素边界
 const LEFT_MIN = 240;
 const LEFT_MAX = 500;
-const LEFT_DEFAULT = 360;
+const LEFT_DEFAULT = 320;
+const BOTTOM_MIN = 120;
+const BOTTOM_MAX = 500;
+const BOTTOM_DEFAULT = 200;
 
 function App() {
   const {
@@ -25,25 +27,25 @@ function App() {
   const [showExport, setShowExport] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
 
-  // --- 左侧面板像素拖拽状态 ---
+  // 左侧面板像素宽度
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
-  const dragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // 底部原文面板像素高度
+  const [bottomHeight, setBottomHeight] = useState(BOTTOM_DEFAULT);
+  const bottomStartRef = useRef({ startY: 0, startHeight: 0 });
+
+  // ---- 左侧水平拖拽 ----
   const handleLeftDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    dragging.current = true;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-
     const onMove = (ev: MouseEvent) => {
-      if (!dragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = ev.clientX - rect.left;
+      if (!containerRef.current) return;
+      const x = ev.clientX - containerRef.current.getBoundingClientRect().left;
       setLeftWidth(Math.max(LEFT_MIN, Math.min(LEFT_MAX, Math.round(x))));
     };
     const onUp = () => {
-      dragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMove);
@@ -53,89 +55,88 @@ function App() {
     document.addEventListener("mouseup", onUp);
   }, []);
 
-  const handleStart = () => {
-    if (inputText.trim().length < 100) return;
-    setShowInput(false);
-    startConvert(inputText);
-  };
+  // ---- 底部垂直拖拽 ----
+  const handleBottomDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    bottomStartRef.current = { startY: e.clientY, startHeight: bottomHeight };
+    const onMove = (ev: MouseEvent) => {
+      const delta = bottomStartRef.current.startY - ev.clientY;
+      setBottomHeight(Math.max(BOTTOM_MIN, Math.min(BOTTOM_MAX, bottomStartRef.current.startHeight + delta)));
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [bottomHeight]);
+
+  const handleStart = () => { if (inputText.trim().length < 100) return; setShowInput(false); startConvert(inputText); };
   const handleReset = () => { reset(); setShowInput(true); setInputText(""); };
-
-  const handleShotClick = useCallback((shotId: string) => {
-    setSelectedShotId(selectedShotId === shotId ? null : shotId);
-  }, [selectedShotId, setSelectedShotId]);
-
-  const handleHistorySelect = useCallback(async (historyTaskId: string) => {
-    setShowInput(false); setSelectedShotId(null);
-    await loadFromHistory(historyTaskId);
-  }, [loadFromHistory, setSelectedShotId]);
-
+  const handleShotClick = useCallback((id: string) => setSelectedShotId(selectedShotId === id ? null : id), [selectedShotId, setSelectedShotId]);
+  const handleHistorySelect = useCallback(async (id: string) => { setShowInput(false); setSelectedShotId(null); await loadFromHistory(id); }, [loadFromHistory, setSelectedShotId]);
   useEffect(() => { if (status === "done") setHistoryKey((k) => k + 1); }, [status]);
 
   const handleShotEdit = useCallback(async (sceneId: string, shotId: string, field: string, value: string) => {
     if (!taskId) return;
     let updated: any = null;
     updateScreenplay((prev: any) => {
-      const newScenes = prev.scenes.map((scene: any) => {
-        if (scene.scene_id !== sceneId) return scene;
-        return {
-          ...scene,
-          shots: scene.shots.map((shot: any) => {
-            if (shot.shot_id !== shotId) return shot;
-            const s = { ...shot };
-            switch (field) {
-              case "visual_prompt": s.visual_prompt = value; break;
-              case "focus_subject": s.focus_subject = value; break;
-              case "duration": s.duration = value; break;
-              case "sfx": s.sfx = value; break;
-              case "dialogue_line": if (s.dialogue) s.dialogue = { ...s.dialogue, line: value }; break;
-              case "dialogue_emotion": if (s.dialogue) s.dialogue = { ...s.dialogue, emotion: value }; break;
-            }
-            return s;
-          }),
-        };
+      const ns = prev.scenes.map((s: any) => s.scene_id !== sceneId ? s : {
+        ...s, shots: s.shots.map((sh: any) => {
+          if (sh.shot_id !== shotId) return sh;
+          const c = { ...sh };
+          switch (field) {
+            case "visual_prompt": c.visual_prompt = value; break;
+            case "focus_subject": c.focus_subject = value; break;
+            case "duration": c.duration = value; break;
+            case "sfx": c.sfx = value; break;
+            case "dialogue_line": if (c.dialogue) c.dialogue = { ...c.dialogue, line: value }; break;
+            case "dialogue_emotion": if (c.dialogue) c.dialogue = { ...c.dialogue, emotion: value }; break;
+          }
+          return c;
+        }),
       });
-      updated = { ...prev, scenes: newScenes };
+      updated = { ...prev, scenes: ns };
       return updated;
     });
     if (updated) saveScreenplay(taskId, updated).catch(() => {});
   }, [taskId, updateScreenplay]);
 
   const highlightedParagraphs: number[] = [];
-  if (screenplay && selectedShotId) {
-    for (const scene of screenplay.scenes)
-      for (const shot of scene.shots)
-        if (shot.shot_id === selectedShotId) highlightedParagraphs.push(...shot.source_paragraphs);
-  }
+  if (screenplay && selectedShotId)
+    for (const s of screenplay.scenes) for (const sh of s.shots)
+      if (sh.shot_id === selectedShotId) highlightedParagraphs.push(...sh.source_paragraphs);
 
   const selectedShot = screenplay && selectedShotId
-    ? screenplay.scenes.flatMap((s: any) => s.shots).find((sh: any) => sh.shot_id === selectedShotId)
-    : null;
+    ? screenplay.scenes.flatMap((s: any) => s.shots).find((sh: any) => sh.shot_id === selectedShotId) : null;
 
-  // ---- Input view ----
+  // ── Input ──
   if (showInput) {
     return (
       <div className="h-screen flex flex-col bg-[#050505] text-zinc-200">
-        <Header status={status} progressMessage={progressMessage} hasScreenplay={false}
-          showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
+        <Header status={status} msg={progressMessage} hasSP={false} showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
         <div className="flex-1 flex">
-          <div className="w-56 flex-shrink-0 border-r border-zinc-800/80 bg-[#0c0c0c]">
+          <div style={{ width: `${LEFT_DEFAULT}px` }} className="flex-shrink-0 border-r border-zinc-800/60 bg-[#0c0c0c] overflow-hidden">
             <HistoryPanel currentTaskId={taskId} onSelect={handleHistorySelect} refreshKey={historyKey} />
           </div>
           <div className="flex-1 flex items-center justify-center p-8 bg-[#0a0a0a]">
             <InputView text={inputText} onChange={setInputText} onSubmit={handleStart}
-              loading={status === "pending" || status === "running"} progress={progress} progressMessage={progressMessage} />
+              loading={status === "pending" || status === "running"} progress={progress} msg={progressMessage} />
           </div>
         </div>
       </div>
     );
   }
 
-  // ---- Loading ----
+  // ── Loading ──
   if (!screenplay) {
     return (
       <div className="h-screen flex flex-col bg-[#050505] text-zinc-200">
-        <Header status={status} progressMessage={progressMessage} hasScreenplay={false}
-          showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
+        <Header status={status} msg={progressMessage} hasSP={false} showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
         <LoadingView progress={progress} message={progressMessage} status={status} />
       </div>
     );
@@ -143,66 +144,78 @@ function App() {
 
   const scene = screenplay.scenes[selectedSceneIndex];
 
-  // ---- Main result view ----
+  // ── Main ──
   return (
     <div className="h-screen flex flex-col bg-[#050505] text-zinc-200" ref={containerRef}>
-      <Header status={status} progressMessage={progressMessage} hasScreenplay={true}
-        showExport={showExport} setShowExport={setShowExport} taskId={taskId} onReset={handleReset} />
+      <Header status={status} msg={progressMessage} hasSP={true} showExport={showExport} setShowExport={setShowExport} taskId={taskId} onReset={handleReset} />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* 1. 左侧边栏：像素宽度，flex-shrink-0 禁止被挤压 */}
-        <div
-          style={{ width: `${leftWidth}px` }}
-          className="flex flex-col flex-shrink-0 bg-[#0c0c0c] border-r border-zinc-800/80 overflow-hidden"
-        >
-          <div className="h-[35%] min-h-[100px]">
-            <HistoryPanel currentTaskId={taskId} onSelect={handleHistorySelect} refreshKey={historyKey} />
-          </div>
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* 左侧边栏：历史/场景导航/角色 + 底部 Shot Detail */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        <div style={{ width: `${leftWidth}px` }}
+          className="flex flex-col flex-shrink-0 bg-[#0c0c0c] border-r border-zinc-800/60 overflow-hidden">
+          {/* Upper: Shot Detail (high info density, benefits from flex space) */}
           <div className="flex-1 overflow-y-auto">
+            <HistorySection
+              currentTaskId={taskId}
+              onSelect={handleHistorySelect}
+              refreshKey={historyKey}
+            />
+            <div className="p-3">
+              <div className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-wider mb-2">Shot Detail</div>
+              {selectedShot ? (
+                <div className="space-y-1.5 text-[11px] text-zinc-400">
+                  <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
+                  <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
+                  <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
+                  <div><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
+                  {selectedShot.sfx && <div><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
+                  <div className="pt-1.5 mt-1.5 border-t border-zinc-800/50">
+                    <p className="text-zinc-500 mb-0.5">Visual Prompt</p>
+                    <p className="text-zinc-300 leading-snug break-words">{selectedShot.visual_prompt}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px] text-zinc-600">Click a shot to see details</p>
+              )}
+            </div>
+          </div>
+          {/* Bottom: Scene nav + Characters (compact, low density) */}
+          <div className="border-t border-zinc-800/80 bg-[#090909] shrink-0">
             <Sidebar
-              scenes={screenplay.scenes}
-              characters={screenplay.characters}
-              meta={screenplay.meta}
-              totalCharacters={screenplay.characters.length}
-              selectedSceneIndex={selectedSceneIndex}
-              onSelectScene={setSelectedSceneIndex}
+              scenes={screenplay.scenes} characters={screenplay.characters}
+              meta={screenplay.meta} totalCharacters={screenplay.characters.length}
+              selectedSceneIndex={selectedSceneIndex} onSelectScene={setSelectedSceneIndex}
             />
           </div>
-          {/* Shot Detail */}
-          <div className="border-t border-zinc-800/80 p-3 max-h-[35%] overflow-y-auto">
-            <h3 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Shot Detail</h3>
-            {selectedShot ? (
-              <div className="space-y-1.5 text-[11px] text-zinc-400">
-                <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
-                <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
-                <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
-                <div><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
-                {selectedShot.sfx && <div><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
-                <div className="pt-1.5 border-t border-zinc-800/50 mt-1.5">
-                  <p className="text-zinc-500 mb-0.5">Visual Prompt</p>
-                  <p className="text-zinc-300 leading-snug">{selectedShot.visual_prompt}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-[11px] text-zinc-600">Click a shot</p>
-            )}
+          {/* Scene nav + Characters (compact, fixed bottom) */}
+          <div className="h-40 border-t border-zinc-800/80 bg-[#090909] p-3 overflow-y-auto shrink-0">
+            {screenplay.characters.map((c: any) => (
+              <span key={c.character_id} className="inline-block text-[11px] text-zinc-400 mr-3 mb-1">
+                {c.canonical_name}
+              </span>
+            ))}
+            <div className="text-[10px] text-zinc-600 mt-2 pt-2 border-t border-zinc-800/50">
+              {screenplay.meta.total_scenes} scenes · {screenplay.meta.total_shots} shots · {screenplay.meta.total_duration_estimate}
+            </div>
           </div>
         </div>
 
-        {/* 2. 拖拽分隔条 */}
-        <div
-          onMouseDown={handleLeftDragStart}
-          className="w-1.5 h-full cursor-col-resize flex-shrink-0 bg-transparent hover:bg-emerald-500/50 transition-colors duration-200 z-50"
-          title="拖拽调整宽度"
-        />
+        {/* 水平拖拽条 */}
+        <div onMouseDown={handleLeftDragStart}
+          className="w-1.5 cursor-col-resize flex-shrink-0 bg-transparent hover:bg-emerald-500/30 transition-colors z-50" />
 
-        {/* 3. 右侧主体：flex-1 min-w-0 防止子元素撑爆 */}
-        <div className="flex-1 min-w-0 flex flex-row overflow-hidden bg-[#0a0a0a]">
-          {/* 剧本分镜流 */}
-          <div className="flex-1 min-w-0 overflow-y-auto p-6">
-            <div className="max-w-3xl mx-auto">
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* 右侧主核心区：上下分层 */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        <div className="flex-1 min-w-0 flex flex-col bg-[#0a0a0a] overflow-hidden">
+
+          {/* 上：剧本分镜流 —— 独占最大横向空间 */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
+            <div className="max-w-4xl mx-auto">
               {!scene ? (
-                <div className="text-zinc-500 p-8 text-center">Select a scene from the left panel</div>
+                <div className="text-zinc-500 p-12 text-center text-sm">Select a scene from the left panel</div>
               ) : (
                 <>
                   <div className="mb-6">
@@ -216,7 +229,7 @@ function App() {
                       <span className="ml-2 text-zinc-600">| {scene.duration_estimate}</span>
                     </p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {scene.shots.map((shot: any) => (
                       <ShotCard key={shot.shot_id} shot={shot}
                         isSelected={shot.shot_id === selectedShotId}
@@ -231,89 +244,57 @@ function App() {
             </div>
           </div>
 
-          {/* 4. 右侧 Source Text 面板 */}
-          <SourcePanel
-            paragraphs={paragraphs}
-            highlightedParagraphs={highlightedParagraphs}
-            selectedShotId={selectedShotId}
-          />
+          {/* 垂直拖拽条 */}
+          <div onMouseDown={handleBottomDragStart}
+            className="h-[6px] cursor-row-resize flex-shrink-0 bg-zinc-900 hover:bg-emerald-500/40 transition-colors z-50 relative group">
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] w-12 mx-auto bg-zinc-600 group-hover:bg-emerald-400/70 group-hover:w-20 transition-all rounded-full" />
+          </div>
+
+          {/* 下：原文对照面板 —— 横向通栏，长文本阅读 */}
+          <div style={{ height: `${bottomHeight}px` }}
+            className="flex-shrink-0 bg-[#0c0c0c] border-t border-zinc-800/60 flex flex-col overflow-hidden">
+            <div className="px-4 py-2 bg-[#111] border-b border-zinc-900 flex justify-between items-center shrink-0">
+              <span className="text-[10px] font-bold text-zinc-400 tracking-wider uppercase">
+                Source Text (原文对照)
+              </span>
+              <span className="text-[10px] text-zinc-600">
+                {selectedShotId ? `Paragraphs: ${highlightedParagraphs.join(", ") || "none"}` : "Click a shot to highlight source text"}
+              </span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 font-serif text-sm leading-relaxed text-zinc-400">
+              {paragraphs.length === 0 ? (
+                <p className="text-zinc-600 text-xs">Original text not available for this session</p>
+              ) : (
+                (() => {
+                  const hs = new Set(highlightedParagraphs);
+                  return paragraphs.map((p, i) => (
+                    <p key={i}
+                      className={`mb-2 px-3 py-1.5 rounded transition-all
+                        ${hs.has(i)
+                          ? "bg-amber-500/10 text-amber-200 border-l-2 border-amber-500 pl-4"
+                          : "text-zinc-500 border-l-2 border-transparent pl-4 hover:text-zinc-300"
+                        }`}
+                    >
+                      <span className="text-zinc-600 mr-2 font-mono text-xs align-top">{i}</span>
+                      {p}
+                    </p>
+                  ));
+                })()
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ============================================================
+// ═══════════════════════════════════════════════════════════
 // Sub-components
-// ============================================================
+// ═══════════════════════════════════════════════════════════
 
-function SourcePanel({ paragraphs, highlightedParagraphs, selectedShotId }: {
-  paragraphs: string[];
-  highlightedParagraphs: number[];
-  selectedShotId: string | null;
-}) {
-  const [collapsed, setCollapsed] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  if (collapsed) {
-    return (
-      <div className="flex-shrink-0 border-l border-zinc-800/80 bg-[#0c0c0c] flex flex-col items-center pt-3 w-8">
-        <button onClick={() => setCollapsed(false)}
-          className="text-zinc-500 hover:text-zinc-300 text-xs transition-colors"
-          title="Expand source panel">&#171;</button>
-        {selectedShotId && (
-          <div className="mt-2 w-1.5 h-1.5 rounded-full bg-amber-500" title="Source available" />
-        )}
-      </div>
-    );
-  }
-
-  const highlightSet = new Set(highlightedParagraphs);
-
-  return (
-    <div ref={panelRef} className="w-72 flex-shrink-0 border-l border-zinc-800/80 bg-[#0c0c0c] flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/80 shrink-0">
-        <h4 className="text-[10px] font-bold text-zinc-500 tracking-wider uppercase">Source Text</h4>
-        <button onClick={() => setCollapsed(true)}
-          className="text-zinc-500 hover:text-zinc-300 text-xs transition-colors"
-          title="Collapse source panel">&#187;</button>
-      </div>
-
-      {!selectedShotId ? (
-        <div className="flex-1 flex items-center justify-center p-4">
-          <p className="text-[11px] text-zinc-600 text-center">Click a shot card<br />to view source text</p>
-        </div>
-      ) : paragraphs.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center p-4">
-          <p className="text-[11px] text-zinc-600">Original text not available</p>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto p-3">
-          {highlightedParagraphs.length > 0 && (
-            <p className="text-[10px] text-amber-400 mb-2">
-              &para; {highlightedParagraphs.join(", ")}
-            </p>
-          )}
-          {paragraphs.map((p, i) => (
-            <p key={i}
-              className={`text-[11px] leading-relaxed mb-2 px-2 py-1 rounded transition-colors
-                ${highlightSet.has(i)
-                  ? "bg-amber-500/10 text-amber-200 border-l-2 border-amber-500 pl-2.5"
-                  : "text-zinc-500"}`}
-            >
-              <span className="text-zinc-600 mr-1.5 font-mono text-[10px]">{i}</span>
-              {p.slice(0, 250)}
-              {p.length > 250 ? "…" : ""}
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Header({ status, progressMessage, hasScreenplay, showExport, setShowExport, taskId, onReset }: {
-  status: string; progressMessage: string; hasScreenplay: boolean;
+function Header({ status, msg, hasSP, showExport, setShowExport, taskId, onReset }: {
+  status: string; msg: string; hasSP: boolean;
   showExport: boolean; setShowExport: (b: boolean) => void; taskId: string | null; onReset: () => void;
 }) {
   return (
@@ -322,14 +303,12 @@ function Header({ status, progressMessage, hasScreenplay, showExport, setShowExp
         Looploop <span className="text-zinc-600 font-normal">噜噜</span>
       </h1>
       <div className="flex items-center gap-2">
-        {status === "running" && <span className="text-[10px] text-zinc-500">{progressMessage}</span>}
-        {hasScreenplay && (
+        {status === "running" && <span className="text-[10px] text-zinc-500">{msg}</span>}
+        {hasSP && (
           <>
             <div className="relative">
               <button onClick={() => setShowExport(!showExport)}
-                className="text-[10px] px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700/50 transition-colors">
-                Export
-              </button>
+                className="text-[10px] px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700/50 transition-colors">Export</button>
               {showExport && taskId && (
                 <div className="absolute right-0 top-8 w-36 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
                   <a href={getYamlUrl(taskId)} onClick={() => setShowExport(false)}
@@ -340,9 +319,7 @@ function Header({ status, progressMessage, hasScreenplay, showExport, setShowExp
               )}
             </div>
             <button onClick={onReset}
-              className="text-[10px] px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700/50 transition-colors">
-              New
-            </button>
+              className="text-[10px] px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700/50 transition-colors">New</button>
           </>
         )}
       </div>
@@ -350,9 +327,32 @@ function Header({ status, progressMessage, hasScreenplay, showExport, setShowExp
   );
 }
 
-function InputView({ text, onChange, onSubmit, loading, progress, progressMessage }: {
+function HistorySection({ currentTaskId, onSelect, refreshKey }: {
+  currentTaskId: string | null; onSelect: (id: string) => void; refreshKey: number;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-zinc-500
+                   tracking-wider uppercase hover:bg-zinc-800/30 transition-colors border-b border-zinc-900"
+      >
+        History
+        <span className={`text-zinc-600 transition-transform ${open ? "rotate-90" : ""}`}>&#8250;</span>
+      </button>
+      {open && (
+        <div className="border-b border-zinc-900">
+          <HistoryPanel currentTaskId={currentTaskId} onSelect={onSelect} refreshKey={refreshKey} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InputView({ text, onChange, onSubmit, loading, progress, msg }: {
   text: string; onChange: (v: string) => void; onSubmit: () => void;
-  loading: boolean; progress: number; progressMessage: string;
+  loading: boolean; progress: number; msg: string;
 }) {
   return (
     <div className="w-full max-w-2xl">
@@ -374,10 +374,9 @@ function InputView({ text, onChange, onSubmit, loading, progress, progressMessag
       {loading && (
         <>
           <div className="mt-4 w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
-            <div className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
-              style={{ width: `${Math.round(progress * 100)}%` }} />
+            <div className="h-full bg-emerald-500 transition-all duration-300 rounded-full" style={{ width: `${Math.round(progress * 100)}%` }} />
           </div>
-          <p className="mt-2 text-xs text-zinc-500 text-center">{progressMessage}</p>
+          <p className="mt-2 text-xs text-zinc-500 text-center">{msg}</p>
         </>
       )}
     </div>
@@ -385,22 +384,15 @@ function InputView({ text, onChange, onSubmit, loading, progress, progressMessag
 }
 
 function LoadingView({ progress, message, status }: { progress: number; message: string; status: string }) {
-  if (status === "error") {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
-        <div className="text-center"><p className="text-red-400 mb-2">Conversion Failed</p>
-          <p className="text-zinc-500 text-sm">{message}</p></div>
-      </div>
-    );
-  }
+  if (status === "error")
+    return <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]"><div className="text-center"><p className="text-red-400 mb-2">Conversion Failed</p><p className="text-zinc-500 text-sm">{message}</p></div></div>;
   return (
     <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
       <div className="text-center">
         <div className="w-8 h-8 border-2 border-zinc-700 border-t-emerald-400 rounded-full animate-spin mx-auto mb-4" />
         <p className="text-zinc-400 text-sm">{message}</p>
         <div className="mt-4 w-48 bg-zinc-800 rounded-full h-1 overflow-hidden mx-auto">
-          <div className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
-            style={{ width: `${Math.round(progress * 100)}%` }} />
+          <div className="h-full bg-emerald-500 transition-all duration-300 rounded-full" style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       </div>
     </div>
