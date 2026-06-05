@@ -139,10 +139,10 @@ class SceneMerger:
 
         # 构建 Meta
         meta_data = {
-            "title": "",
-            "source": "",
-            "author": "",
-            "genre": "",
+            "title": meta_overrides.get("title", "Untitled") if meta_overrides else "Untitled",
+            "source": meta_overrides.get("source", "Untitled") if meta_overrides else "Untitled",
+            "author": meta_overrides.get("author", "Unknown") if meta_overrides else "Unknown",
+            "genre": meta_overrides.get("genre", "General") if meta_overrides else "General",
             "total_scenes": len(scenes),
             "total_shots": total_shots,
             "total_duration_estimate": total_duration,
