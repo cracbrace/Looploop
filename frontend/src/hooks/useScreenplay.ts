@@ -91,6 +91,12 @@ export function useScreenplay() {
     try {
       const sp = await getScreenplay(historyTaskId);
       if (sp && sp.meta) {
+        // Restore original text for source panel
+        const origText = (sp as any)._original_text || "";
+        setOriginalText(origText);
+        setParagraphs(origText ? origText.split("\n\n") : []);
+        // Remove internal fields before storing
+        delete (sp as any)._original_text;
         setScreenplay(sp);
         setTaskId(historyTaskId);
         setStatus("done");

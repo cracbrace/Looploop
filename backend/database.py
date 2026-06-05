@@ -35,6 +35,7 @@ async def init_db():
             message TEXT DEFAULT '',
             result_json TEXT,
             error TEXT,
+            original_text TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -42,16 +43,21 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_tasks_created_at
         ON tasks(created_at DESC)
     """)
+    # Migration for existing databases
+    try:
+        await db.execute("ALTER TABLE tasks ADD COLUMN original_text TEXT DEFAULT ''")
+    except Exception:
+        pass  # column already exists
     await db.commit()
     await db.close()
 
 
-async def create_task(task_id: str, title: str = "Untitled") -> dict:
+async def create_task(task_id: str, title: str = "Untitled", original_text: str = "") -> dict:
     """创建新任务"""
     db = await get_db()
     await db.execute(
-        "INSERT INTO tasks (task_id, title) VALUES (?, ?)",
-        (task_id, title),
+        "INSERT INTO tasks (task_id, title, original_text) VALUES (?, ?, ?)",
+        (task_id, title, original_text),
     )
     await db.commit()
     await db.close()
@@ -134,4 +140,7 @@ def _row_to_dict(row: aiosqlite.Row) -> dict:
         except json.JSONDecodeError:
             d["result"] = None
         del d["result_json"]
+    # Keep original_text field, ensure it's a string
+    if "original_text" not in d:
+        d["original_text"] = ""
     return d
