@@ -247,6 +247,9 @@ function ResultView({
           </h2>
           <p className="text-xs text-zinc-500 mb-4">
             {scene.time_of_day} &middot; {scene.atmosphere}
+            {scene.era && <span> &middot; {scene.era}</span>}
+            {scene.weather && <span> &middot; {scene.weather}</span>}
+            <span className="ml-2 text-zinc-600">| {scene.duration_estimate}</span>
           </p>
 
           <div className="space-y-3">
