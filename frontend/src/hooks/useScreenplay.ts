@@ -29,6 +29,9 @@ export function useScreenplay() {
   const [originalText, setOriginalText] = useState("");
   const [paragraphs, setParagraphs] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  // Undo/redo stacks
+  const undoStackRef = useRef<any[]>([]);
+  const redoStackRef = useRef<any[]>([]);
 
   const startConvert = useCallback(async (text: string, onLog?: (msg: string) => void) => {
     setStatus("pending");
@@ -104,11 +107,40 @@ export function useScreenplay() {
   }, []);
 
   const updateScreenplay = useCallback(
-    (updater: (prev: any) => any) => {
-      setScreenplay((prev: any) => prev ? updater(prev) : prev);
+    (updater: (prev: any) => any, pushUndo = true) => {
+      setScreenplay((prev: any) => {
+        if (!prev) return prev;
+        if (pushUndo) {
+          undoStackRef.current.push(JSON.parse(JSON.stringify(prev)));
+          redoStackRef.current = [];
+          if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+        }
+        return updater(prev);
+      });
     },
     []
   );
+
+  const undo = useCallback(() => {
+    const prev = undoStackRef.current.pop();
+    if (!prev) return;
+    setScreenplay((current: any) => {
+      if (current) redoStackRef.current.push(JSON.parse(JSON.stringify(current)));
+      return prev;
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    setScreenplay((current: any) => {
+      if (current) undoStackRef.current.push(JSON.parse(JSON.stringify(current)));
+      return next;
+    });
+  }, []);
+
+  const canUndo = () => undoStackRef.current.length > 0;
+  const canRedo = () => redoStackRef.current.length > 0;
 
   const handleRegenerateShot = useCallback(
     async (
@@ -174,6 +206,10 @@ export function useScreenplay() {
     cancelConvert,
     handleRegenerateShot,
     updateScreenplay,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     loadFromHistory,
     reset,
   };

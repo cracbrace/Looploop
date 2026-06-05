@@ -72,13 +72,18 @@ interface ShotCardProps {
     dialogue?: { character: string; emotion: string; line: string } | null;
     duration: string;
   };
+  shotIndex: number;
   isSelected: boolean;
   onClick: () => void;
   onRegenerate?: (feedback?: string) => Promise<void>;
   onEdit?: (field: string, value: string) => void;
+  onDragStart?: (e: React.DragEvent, index: number) => void;
+  onDragOver?: (e: React.DragEvent, index: number) => void;
+  onDrop?: (e: React.DragEvent, index: number) => void;
 }
 
-export function ShotCard({ shot, isSelected, onClick, onRegenerate, onEdit }: ShotCardProps) {
+export function ShotCard({ shot, shotIndex, isSelected, onClick, onRegenerate, onEdit, onDragStart, onDragOver, onDrop }: ShotCardProps) {
+  const [dragOver, setDragOver] = useState(false);
   const [showRegen, setShowRegen] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [loading, setLoading] = useState(false);
@@ -100,9 +105,15 @@ export function ShotCard({ shot, isSelected, onClick, onRegenerate, onEdit }: Sh
   return (
     <div
       onClick={onClick}
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart?.(e, shotIndex); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(true); onDragOver?.(e, shotIndex); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); onDrop?.(e, shotIndex); }}
       className={`bg-zinc-900 border border-zinc-800 rounded-lg p-3 border-l-2 ${borderColor}
         transition-all cursor-pointer hover:border-zinc-600
         ${isSelected ? "ring-1 ring-emerald-500/50 border-emerald-500/50" : ""}
+        ${dragOver ? "border-t-2 border-t-emerald-400" : ""}
         ${loading ? "opacity-60 animate-pulse" : ""}`}
     >
       <div className="flex items-center gap-2 mb-1">

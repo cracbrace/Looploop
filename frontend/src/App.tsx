@@ -21,6 +21,7 @@ function App() {
     selectedShotId, setSelectedShotId,
     originalText, paragraphs,
     startConvert, handleRegenerateShot, updateScreenplay,
+    undo, redo, canUndo, canRedo,
     loadFromHistory, taskId, reset,
   } = useScreenplay();
 
@@ -31,6 +32,8 @@ function App() {
   const [logOpen, setLogOpen] = useState(false);
   const [pipelineLogs, setPipelineLogs] = useState<Array<{ id: number; level: "info"|"warn"|"error"; message: string; time: string }>>([]);
   const logIdRef = useRef(0);
+  // Chapter selection state (moved from InputView to App for filtering)
+  const [chapters, setChapters] = useState<Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>>([]);
 
   // 左侧面板像素宽度
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -81,11 +84,17 @@ function App() {
   }, [bottomHeight]);
 
   const handleStart = () => {
-    if (inputText.trim().length < 100) return;
+    // Filter text by selected chapters
+    let effectiveText = inputText;
+    const selected = chapters.filter(c => c.selected);
+    if (selected.length > 0 && selected.length < chapters.length) {
+      effectiveText = selected.map(c => c.text).join("\n\n");
+    }
+    if (effectiveText.trim().length < 100) return;
     setShowInput(false);
     setPipelineLogs([]);
     logIdRef.current = 0;
-    startConvert(inputText, (logMsg: string) => {
+    startConvert(effectiveText, (logMsg: string) => {
       const now = new Date();
       const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
       const level: "info"|"warn"|"error" = logMsg.includes("失败") || logMsg.includes("Error") ? "error" : logMsg.includes("合并") || logMsg.includes("新增") ? "warn" : "info";
@@ -96,6 +105,44 @@ function App() {
   const handleShotClick = useCallback((id: string) => setSelectedShotId(selectedShotId === id ? null : id), [selectedShotId, setSelectedShotId]);
   const handleHistorySelect = useCallback(async (id: string) => { setShowInput(false); setSelectedShotId(null); await loadFromHistory(id); }, [loadFromHistory, setSelectedShotId]);
   useEffect(() => { if (status === "done") setHistoryKey((k) => k + 1); }, [status]);
+
+  // Ctrl+Z / Ctrl+Y keyboard handler
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) { undo(); if (taskId) saveScreenplay(taskId, screenplay!).catch(() => {}); }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        if (canRedo()) { redo(); if (taskId) saveScreenplay(taskId, screenplay!).catch(() => {}); }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [canUndo, canRedo, undo, redo, taskId, screenplay]);
+
+  // Shot reorder handler
+  const handleShotReorder = useCallback(async (sceneId: string, fromIndex: number, toIndex: number) => {
+    if (!taskId || fromIndex === toIndex) return;
+    let updated: any = null;
+    updateScreenplay((prev: any) => {
+      const ns = prev.scenes.map((scene: any) => {
+        if (scene.scene_id !== sceneId) return scene;
+        const shots = [...scene.shots];
+        const [moved] = shots.splice(fromIndex, 1);
+        shots.splice(toIndex, 0, moved);
+        // Renumber
+        const renumbered = shots.map((s: any, i: number) => ({
+          ...s, shot_number: i + 1, shot_id: `${sceneId}_${String(i + 1).padStart(2, "0")}`,
+        }));
+        return { ...scene, shots: renumbered };
+      });
+      updated = { ...prev, scenes: ns };
+      return updated;
+    });
+    if (updated) saveScreenplay(taskId, updated).catch(() => {});
+  }, [taskId, updateScreenplay]);
 
   const handleShotEdit = useCallback(async (sceneId: string, shotId: string, field: string, value: string) => {
     if (!taskId) return;
@@ -141,6 +188,7 @@ function App() {
           </div>
           <div className="flex-1 flex items-center justify-center p-8 bg-[#0a0a0a]">
             <InputView text={inputText} onChange={setInputText} onSubmit={handleStart}
+              chapters={chapters} setChapters={setChapters}
               loading={status === "pending" || status === "running"} progress={progress} msg={progressMessage} />
           </div>
         </div>
@@ -247,12 +295,18 @@ function App() {
                     </p>
                   </div>
                   <div className="space-y-4">
-                    {scene.shots.map((shot: any) => (
-                      <ShotCard key={shot.shot_id} shot={shot}
+                    {scene.shots.map((shot: any, idx: number) => (
+                      <ShotCard key={shot.shot_id} shot={shot} shotIndex={idx}
                         isSelected={shot.shot_id === selectedShotId}
                         onClick={() => handleShotClick(shot.shot_id)}
                         onRegenerate={(fb) => handleRegenerateShot(scene.scene_id, shot.shot_id, fb)}
                         onEdit={(f, v) => handleShotEdit(scene.scene_id, shot.shot_id, f, v)}
+                        onDragStart={(e, fromIdx) => { e.dataTransfer.setData("text/plain", String(fromIdx)); }}
+                        onDragOver={(e) => { e.preventDefault(); }}
+                        onDrop={(e, toIdx) => {
+                          const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+                          if (!isNaN(fromIdx)) handleShotReorder(scene.scene_id, fromIdx, toIdx);
+                        }}
                       />
                     ))}
                   </div>
@@ -367,17 +421,16 @@ function HistorySection({ currentTaskId, onSelect, refreshKey }: {
   );
 }
 
-function InputView({ text, onChange, onSubmit, loading, progress, msg }: {
+function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters, setChapters }: {
   text: string; onChange: (v: string) => void; onSubmit: () => void;
   loading: boolean; progress: number; msg: string;
+  chapters: Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>;
+  setChapters: React.Dispatch<React.SetStateAction<Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>>>;
 }) {
-  const [chapters, setChapters] = useState<Array<{ index: number; title: string; preview: string; selected: boolean }>>([]);
-
   const handleTextReady = (raw: string) => onChange(raw);
-  const handleChaptersReady = (chs: Array<{ index: number; title: string; preview: string; selected: boolean }>) => setChapters(chs);
+  const handleChaptersReady = (chs: Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>) => setChapters(chs);
   const toggleChapter = (i: number) => setChapters((prev) => prev.map((c) => c.index === i ? { ...c, selected: !c.selected } : c));
 
-  // 总是使用全文；chapters 用于展示和未来按章节过滤
   const effectiveText = text;
 
   return (
