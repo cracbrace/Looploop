@@ -254,6 +254,9 @@ function ResultView({
   onShotClick: (id: string) => void;
   onRegenerateShot: (sceneId: string, shotId: string, feedback?: string) => Promise<void>;
 }) {
+  if (!screenplay.scenes || screenplay.scenes.length === 0) {
+    return <div className="flex-1 p-8 text-zinc-500">No scenes in screenplay data</div>;
+  }
   const scene = screenplay.scenes[selectedSceneIndex];
   if (!scene) return <div className="flex-1 p-8 text-zinc-500">No scene data</div>;
 

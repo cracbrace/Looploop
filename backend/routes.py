@@ -361,11 +361,12 @@ async def _run_pipeline(task_id: str, request: ConvertRequest):
             task["progress"] = stage.progress
             task["data"] = stage.data
 
-        # 获取结果
+        # 获取最终结果（必须在设置 status="done" 之前，避免前端竞态）
         screenplay = await pipeline.run(request.text, meta_overrides)
         task["result"] = screenplay.model_dump()
-        task["status"] = "done"
         task["progress"] = 1.0
+        task["stage"] = "done"
+        task["status"] = "done"
 
     except Exception as e:
         task["status"] = "error"

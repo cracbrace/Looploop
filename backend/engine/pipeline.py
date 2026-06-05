@@ -265,22 +265,24 @@ class Pipeline:
         yield PipelineStage(
             stage="building",
             message="正在组装最终剧本...",
-            progress=0.90,
+            progress=0.95,
         )
         screenplay = self.merger.build_screenplay(
             scenes, refined_registry, meta_overrides
         )
 
         elapsed = time.time() - t0
+        # "done" stage is sent by routes._run_pipeline AFTER setting task["result"]
+        # to avoid a race condition where the frontend fetches result before it's ready
         yield PipelineStage(
-            stage="done",
+            stage="building",
             message=(
                 f"转换完成！{screenplay.meta.total_scenes} 场景 · "
                 f"{screenplay.meta.total_shots} 镜头 · "
                 f"{len(screenplay.characters)} 角色 · "
                 f"耗时 {elapsed:.0f}s"
             ),
-            progress=1.0,
+            progress=0.99,
             data={
                 "scenes": screenplay.meta.total_scenes,
                 "shots": screenplay.meta.total_shots,
