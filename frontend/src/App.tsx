@@ -3,6 +3,7 @@ import { useScreenplay } from "./hooks/useScreenplay";
 import { ShotCard } from "./components/ShotCard";
 import { Sidebar } from "./components/Sidebar";
 import { HistoryPanel } from "./components/HistoryPanel";
+import { DropZone, ChapterTree } from "./components/DropZone";
 import { getYamlUrl, getWordUrl, saveScreenplay } from "./api/client";
 
 const LEFT_MIN = 240;
@@ -354,18 +355,31 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg }: {
   text: string; onChange: (v: string) => void; onSubmit: () => void;
   loading: boolean; progress: number; msg: string;
 }) {
+  const [chapters, setChapters] = useState<Array<{ index: number; title: string; preview: string; selected: boolean }>>([]);
+
+  const handleTextReady = (raw: string) => onChange(raw);
+  const handleChaptersReady = (chs: Array<{ index: number; title: string; preview: string; selected: boolean }>) => setChapters(chs);
+  const toggleChapter = (i: number) => setChapters((prev) => prev.map((c) => c.index === i ? { ...c, selected: !c.selected } : c));
+
+  // 总是使用全文；chapters 用于展示和未来按章节过滤
+  const effectiveText = text;
+
   return (
     <div className="w-full max-w-2xl">
       <h2 className="text-xl font-semibold mb-2">Start a New Screenplay</h2>
-      <p className="text-zinc-500 text-sm mb-4">Paste 3+ chapters. AI extracts scenes, shots, and dialogue automatically.</p>
+      <p className="text-zinc-500 text-sm mb-4">Drop a .txt / .docx / .md file, or paste text below. AI extracts scenes, shots, and dialogue automatically.</p>
+      <DropZone onChaptersReady={handleChaptersReady} onTextReady={handleTextReady} disabled={loading} />
+      <ChapterTree chapters={chapters} onToggle={toggleChapter}
+        onSelectAll={() => setChapters((prev) => prev.map((c) => ({ ...c, selected: true })))}
+        onDeselectAll={() => setChapters((prev) => prev.map((c) => ({ ...c, selected: false })))} />
       <textarea value={text} onChange={(e) => onChange(e.target.value)}
-        placeholder="Paste your novel text here..."
-        className="w-full h-56 bg-zinc-900 border border-zinc-700 rounded-lg p-4 text-sm text-zinc-200
+        placeholder="Or paste your novel text here..."
+        className="mt-3 w-full h-40 bg-zinc-900 border border-zinc-700 rounded-lg p-4 text-sm text-zinc-200
                    placeholder-zinc-600 resize-none focus:outline-none focus:border-zinc-500 transition-colors"
         disabled={loading} />
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-zinc-600">{text.length} chars (min 100)</span>
-        <button onClick={onSubmit} disabled={text.trim().length < 100 || loading}
+        <span className="text-xs text-zinc-600">{effectiveText.length} chars (min 100)</span>
+        <button onClick={onSubmit} disabled={effectiveText.trim().length < 100 || loading}
           className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40
                      disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors">
           {loading ? `Converting ${Math.round(progress * 100)}%` : "Convert"}
