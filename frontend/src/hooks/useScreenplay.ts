@@ -100,6 +100,13 @@ export function useScreenplay() {
     }
   }, []);
 
+  const updateScreenplay = useCallback(
+    (updater: (prev: any) => any) => {
+      setScreenplay((prev: any) => prev ? updater(prev) : prev);
+    },
+    []
+  );
+
   const handleRegenerateShot = useCallback(
     async (
       sceneId: string,
@@ -163,6 +170,7 @@ export function useScreenplay() {
     startConvert,
     cancelConvert,
     handleRegenerateShot,
+    updateScreenplay,
     loadFromHistory,
     reset,
   };

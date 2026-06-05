@@ -3,7 +3,7 @@ import { useScreenplay } from "./hooks/useScreenplay";
 import { ShotCard } from "./components/ShotCard";
 import { Sidebar } from "./components/Sidebar";
 import { SourcePanel } from "./components/SourcePanel";
-import { getYamlUrl, getWordUrl, getScreenplay } from "./api/client";
+import { getYamlUrl, getWordUrl, saveScreenplay } from "./api/client";
 import { HistoryPanel } from "./components/HistoryPanel";
 
 function App() {
@@ -18,6 +18,7 @@ function App() {
     paragraphs,
     startConvert,
     handleRegenerateShot,
+    updateScreenplay,
     loadFromHistory,
     taskId,
     reset,
@@ -26,6 +27,42 @@ function App() {
   const [inputText, setInputText] = useState("");
   const [showExport, setShowExport] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+
+  const handleShotEdit = useCallback(async (
+    sceneId: string, shotId: string, field: string, value: string
+  ) => {
+    if (!taskId) return;
+    let updatedScreenplay: any = null;
+    updateScreenplay((prev: any) => {
+      const newScenes = prev.scenes.map((scene: any) => {
+        if (scene.scene_id !== sceneId) return scene;
+        return {
+          ...scene,
+          shots: scene.shots.map((shot: any) => {
+            if (shot.shot_id !== shotId) return shot;
+            const updated = { ...shot };
+            switch (field) {
+              case "visual_prompt": updated.visual_prompt = value; break;
+              case "focus_subject": updated.focus_subject = value; break;
+              case "duration": updated.duration = value; break;
+              case "sfx": updated.sfx = value; break;
+              case "dialogue_line":
+                if (updated.dialogue) updated.dialogue = { ...updated.dialogue, line: value };
+                break;
+              case "dialogue_emotion":
+                if (updated.dialogue) updated.dialogue = { ...updated.dialogue, emotion: value };
+                break;
+            }
+            return updated;
+          }),
+        };
+      });
+      updatedScreenplay = { ...prev, scenes: newScenes };
+      return updatedScreenplay;
+    });
+    // Persist
+    if (updatedScreenplay) saveScreenplay(taskId, updatedScreenplay).catch(console.error);
+  }, [taskId, updateScreenplay]);
 
   const handleHistorySelect = useCallback(async (historyTaskId: string) => {
     setShowInput(false);
@@ -136,6 +173,7 @@ function App() {
             onSelectScene={setSelectedSceneIndex}
             onShotClick={handleShotClick}
             onRegenerateShot={handleRegenerateShot}
+            onEditShot={handleShotEdit}
             taskId={taskId}
             historyKey={historyKey}
             onHistorySelect={handleHistorySelect}
@@ -263,6 +301,7 @@ function ResultView({
   onSelectScene,
   onShotClick,
   onRegenerateShot,
+  onEditShot,
   taskId,
   historyKey,
   onHistorySelect,
@@ -273,6 +312,7 @@ function ResultView({
   onSelectScene: (i: number) => void;
   onShotClick: (id: string) => void;
   onRegenerateShot: (sceneId: string, shotId: string, feedback?: string) => Promise<void>;
+  onEditShot: (sceneId: string, shotId: string, field: string, value: string) => void;
   taskId: string | null;
   historyKey: number;
   onHistorySelect: (taskId: string) => void;
@@ -326,6 +366,7 @@ function ResultView({
                 isSelected={shot.shot_id === selectedShotId}
                 onClick={() => onShotClick(shot.shot_id)}
                 onRegenerate={(feedback) => onRegenerateShot(scene.scene_id, shot.shot_id, feedback)}
+                onEdit={(field, value) => onEditShot(scene.scene_id, shot.shot_id, field, value)}
               />
             ))}
           </div>
