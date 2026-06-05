@@ -119,7 +119,15 @@ async def stream_progress(task_id: str):
                 break
             if task["progress"] != last_progress:
                 last_progress = task["progress"]
-                yield f"data: {json.dumps({'stage': task.get('stage',''), 'message': task.get('message',''), 'progress': task['progress']}, ensure_ascii=False)}\n\n"
+                logs = task.get("data", {}).get("logs", []) if task.get("data") else []
+                event = {
+                    "stage": task.get("stage", ""),
+                    "message": task.get("message", ""),
+                    "progress": task["progress"],
+                }
+                if logs:
+                    event["logs"] = logs
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0.3)
 
         # 最终事件
