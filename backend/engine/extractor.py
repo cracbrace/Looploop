@@ -91,9 +91,10 @@ class ChapterExtractor:
    - 情感爆发 → 特写/大特写
    - 紧张追逐 → 手持 + 跟随
 5. **对白提取**：逐字引用原文对白，不要改写
-6. **时间轴分段**：对于超过 5s 的镜头，尝试拆分为 2-3 个时间段：
-   格式: ["0-3s: 远景建立场景", "3-6s: 推进至中景", "6-8s: 特写捕捉表情"]
-   短镜头 (≤5s) 可以留空 timeline 字段
+6. **时间轴分段（必须输出）**：每个镜头都必须提供 timeline 数组。
+   即使短镜头也要至少输出 1 段时间:
+   格式: ["0-3s: 远景建立场景，展现孤独氛围", "3-8s: 推进至近景，捕捉微表情"]
+   timeline 必须始终为数组，即使只有一个时间段也不要留空
 7. **角色名**：如果提供了角色表，请使用 canonical_name；如果遇到新角色，使用原文中的名字并在 characters_found 中列出
 
 ## 镜头语言参考
@@ -221,7 +222,7 @@ class ChapterExtractor:
           "camera_movement": "运镜（从枚举中选择）",
           "focus_subject": "镜头焦点（主体）",
           "visual_prompt": "英文视频生成 prompt（≥20 字符）",
-          "timeline": ["0-3s: 画面描述", "3-8s: 画面描述"] 或空数组,
+          "timeline": ["0-3s: 远景建立场景，展现环境氛围", "3-8s: 推进至中景，捕捉人物表情"],
           "background": "背景补充（无则空字符串）",
           "character": "对白角色名（无对白则空字符串）",
           "line": "台词原文（无则空字符串）",
@@ -274,7 +275,9 @@ class ChapterExtractor:
                     sfx=shot_data.get("sfx", ""),
                     bgm=shot_data.get("bgm", ""),
                     duration=shot_data.get("duration", "5s"),
-                    timeline=shot_data.get("timeline") if shot_data.get("timeline") else None,
+                    timeline=shot_data.get("timeline") if shot_data.get("timeline") else
+                             [f"0-{shot_data.get('duration', '5s')}: {shot_data.get('focus_subject', '')} - {shot_data.get('shot_type', '')} · {shot_data.get('camera_movement', '')}"],
+                    # fallback: 从 metadata 合成单段 timeline
                     source_paragraphs=shot_paras if shot_paras else scene_paras,
                 ))
 
