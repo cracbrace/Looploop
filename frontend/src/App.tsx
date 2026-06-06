@@ -478,6 +478,7 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
   useEffect(() => {
     if (chapterTimer.current) clearTimeout(chapterTimer.current);
     chapterTimer.current = setTimeout(() => {
+      console.log("[ChapterTree] InputView debounce fired, text.length:", text.length, "chapters.length:", chapters.length);
       if (text.trim().length > 50 && chapters.length === 0) {
         // Only trigger if no chapters detected yet (DropZone takes priority)
         // Manually parse here using same logic as DropZone
@@ -497,6 +498,7 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
           }
         }
         if (cur) { cur.endLine = lines.length; cur.text = lines.slice(cur.startLine, lines.length).join("\n"); chs.push(cur); }
+        console.log("[ChapterTree] InputView debounce parsed chapters:", chs.length, chs.map((c: any) => c.title).join(", "));
         if (chs.length > 1) setChapters(chs);
       }
     }, 600);
