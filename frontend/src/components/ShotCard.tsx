@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { CameraTooltip } from "./CameraTooltip";
 
 const shotTypeColor: Record<string, string> = {
   "大远景": "border-l-blue-500", "远景": "border-l-sky-500",
@@ -121,9 +122,11 @@ export function ShotCard({ shot, shotIndex, isSelected, onClick, onRegenerate, o
         <span className="text-xs px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-300">
           {shot.shot_type}
         </span>
-        <span className="text-xs px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">
-          {shot.camera_movement}
-        </span>
+        <CameraTooltip movement={shot.camera_movement}>
+          <span className="text-xs px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400 cursor-help border-b border-dotted border-zinc-600">
+            {shot.camera_movement}
+          </span>
+        </CameraTooltip>
         <EditableField
           value={shot.duration}
           onSave={(v) => edit("duration", v)}
