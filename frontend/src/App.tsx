@@ -176,7 +176,7 @@ function App() {
   if (showInput) {
     return (
       <div className="h-screen flex flex-col bg-[#050505] text-zinc-200">
-        <Header status={status} msg={progressMessage} hasSP={false} showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
+        <Header status={status} msg={progressMessage} hasSP={false} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
         <div className="flex-1 flex">
           <div style={{ width: `${LEFT_DEFAULT}px` }} className="flex-shrink-0 border-r border-zinc-800/60 bg-[#0c0c0c] overflow-hidden">
             <HistoryPanel currentTaskId={taskId} onSelect={handleHistorySelect} refreshKey={historyKey} />
@@ -195,7 +195,7 @@ function App() {
   if (!screenplay) {
     return (
       <div className="h-screen flex flex-col bg-[#050505] text-zinc-200">
-        <Header status={status} msg={progressMessage} hasSP={false} showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
+        <Header status={status} msg={progressMessage} hasSP={false} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} showExport={false} setShowExport={() => {}} taskId={null} onReset={handleReset} />
         <LoadingView progress={progress} message={progressMessage} status={status} />
       </div>
     );
@@ -216,7 +216,9 @@ function App() {
   // ── Main ──
   return (
     <div className="h-screen flex flex-col bg-[#050505] text-zinc-200" ref={containerRef}>
-      <Header status={status} msg={progressMessage} hasSP={true} showExport={showExport} setShowExport={setShowExport} taskId={taskId} onReset={handleReset} />
+      <Header status={status} msg={progressMessage} hasSP={true} showExport={showExport} setShowExport={setShowExport} taskId={taskId} onReset={handleReset}
+        canUndo={canUndo()} canRedo={canRedo()} onUndo={() => { undo(); if (taskId && screenplay) saveScreenplay(taskId, screenplay).catch(() => {}); }}
+        onRedo={() => { redo(); if (taskId && screenplay) saveScreenplay(taskId, screenplay).catch(() => {}); }} />
       <LogDrawer logs={pipelineLogs} open={logOpen} onToggle={() => setLogOpen(!logOpen)} onClear={() => setPipelineLogs([])} />
 
       <div className="flex-1 flex overflow-hidden">
@@ -378,9 +380,10 @@ function App() {
 // Sub-components
 // ═══════════════════════════════════════════════════════════
 
-function Header({ status, msg, hasSP, showExport, setShowExport, taskId, onReset }: {
+function Header({ status, msg, hasSP, showExport, setShowExport, taskId, onReset, canUndo, canRedo, onUndo, onRedo }: {
   status: string; msg: string; hasSP: boolean;
   showExport: boolean; setShowExport: (b: boolean) => void; taskId: string | null; onReset: () => void;
+  canUndo: boolean; canRedo: boolean; onUndo: () => void; onRedo: () => void;
 }) {
   return (
     <header className="h-10 flex items-center justify-between px-4 border-b border-zinc-800/80 shrink-0 bg-[#080808]">
@@ -391,6 +394,14 @@ function Header({ status, msg, hasSP, showExport, setShowExport, taskId, onReset
         {status === "running" && <span className="text-[10px] text-zinc-500">{msg}</span>}
         {hasSP && (
           <>
+            <div className="flex items-center gap-1 mr-1 border-r border-zinc-700/50 pr-2">
+              <button onClick={onUndo} disabled={!canUndo}
+                className="text-[10px] px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-default transition-colors"
+                title="Undo (Ctrl+Z)">↩</button>
+              <button onClick={onRedo} disabled={!canRedo}
+                className="text-[10px] px-1.5 py-0.5 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-default transition-colors"
+                title="Redo (Ctrl+Y)">↪</button>
+            </div>
             <div className="relative">
               <button onClick={() => setShowExport(!showExport)}
                 className="text-[10px] px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700/50 transition-colors">Export</button>
@@ -441,9 +452,40 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
   chapters: Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>;
   setChapters: React.Dispatch<React.SetStateAction<Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>>>;
 }) {
+  const chapterTimer = useRef<ReturnType<typeof setTimeout>>();
+
   const handleTextReady = (raw: string) => onChange(raw);
   const handleChaptersReady = (chs: Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>) => setChapters(chs);
   const toggleChapter = (i: number) => setChapters((prev) => prev.map((c) => c.index === i ? { ...c, selected: !c.selected } : c));
+
+  // Debounced re-parse when text changes (for pasted text, not just drag-and-drop)
+  useEffect(() => {
+    if (chapterTimer.current) clearTimeout(chapterTimer.current);
+    chapterTimer.current = setTimeout(() => {
+      if (text.trim().length > 50 && chapters.length === 0) {
+        // Only trigger if no chapters detected yet (DropZone takes priority)
+        // Manually parse here using same logic as DropZone
+        const norm = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+          .replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)/g, "\n$1")
+          .replace(/\n{3,}/g, "\n\n").trim();
+        const lines = norm.split("\n");
+        const chs: any[] = [];
+        let cur: any = null;
+        for (let i = 0; i < lines.length; i++) {
+          const t = lines[i].trim();
+          if (/^(第[一二三四五六七八九十百千\d]+[章节回]\b|Chapter\s+\d+)/m.test(t)) {
+            if (cur) { cur.endLine = i; cur.text = lines.slice(cur.startLine, i).join("\n"); chs.push(cur); }
+            cur = { index: chs.length, title: t.slice(0, 60), preview: "", selected: true, startLine: i, endLine: i, text: "" };
+          } else if (cur && t && cur.preview.length < 80) {
+            cur.preview += (cur.preview ? " " : "") + t;
+          }
+        }
+        if (cur) { cur.endLine = lines.length; cur.text = lines.slice(cur.startLine, lines.length).join("\n"); chs.push(cur); }
+        if (chs.length > 1) setChapters(chs);
+      }
+    }, 600);
+    return () => { if (chapterTimer.current) clearTimeout(chapterTimer.current); };
+  }, [text]);
 
   const effectiveText = text;
 

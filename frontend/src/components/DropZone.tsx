@@ -18,12 +18,21 @@ interface DropZoneProps {
 
 const CHAPTER_RE = /^(第[一二三四五六七八九十百千\d]+[章节回]\b|Chapter\s+\d+)/m;
 
+function normalizeText(raw: string): string {
+  let t = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // 在非行首的章节标记前插入换行
+  t = t.replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)/g, "\n$1");
+  t = t.replace(/(?<=[.?!\n])\s*(Chapter\s+\d+)/gi, "\n$1");
+  return t.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function DropZone({ onChaptersReady, onTextReady, disabled }: DropZoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const parseText = useCallback((raw: string) => {
-    const lines = raw.split("\n");
+    const normalized = normalizeText(raw);
+    const lines = normalized.split("\n");
     const chapters: ChapterInfo[] = [];
     let currentChapter: ChapterInfo | null = null;
     let chapterStartLine = 0;
