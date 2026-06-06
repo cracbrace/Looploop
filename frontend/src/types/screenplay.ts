@@ -32,6 +32,7 @@ export interface Shot {
   camera_movement: string;
   focus_subject: string;
   visual_prompt: string;
+  timeline?: string[];
   background?: string;
   dialogue?: Dialogue;
   sfx?: string;

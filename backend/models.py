@@ -158,6 +158,12 @@ class Shot(BaseModel):
         pattern=r"^\d+s$",
         examples=["5s", "8s"],
     )
+    # 🆕 v0.4: 镜头内时间轴分段描述
+    timeline: Optional[list[str]] = Field(
+        default=None,
+        description="镜头内部分段时间描述，如['0-3s: 高空俯拍，场景建立', '3-6s: 镜头推进']",
+        examples=[["0-3s: 远景建立场景", "3-8s: 推进至近景"]],
+    )
 
     # === 溯源 ===
     source_paragraphs: list[int] = Field(

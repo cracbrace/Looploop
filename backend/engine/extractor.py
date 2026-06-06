@@ -217,6 +217,7 @@ class ChapterExtractor:
           "camera_movement": "运镜（从枚举中选择）",
           "focus_subject": "镜头焦点（主体）",
           "visual_prompt": "英文视频生成 prompt（≥20 字符）",
+          "timeline": ["0-3s: 画面描述", "3-8s: 画面描述"] 或空数组,
           "background": "背景补充（无则空字符串）",
           "character": "对白角色名（无对白则空字符串）",
           "line": "台词原文（无则空字符串）",
