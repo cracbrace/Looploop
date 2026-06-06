@@ -109,6 +109,10 @@ export function getYamlUrl(taskId: string): string {
   return `${BASE}/screenplay/${taskId}/export/yaml`;
 }
 
+export function getZipUrl(taskId: string): string {
+  return `${BASE}/screenplay/${taskId}/export/zip`;
+}
+
 export function getManifestUrl(taskId: string): string {
   return `${BASE}/screenplay/${taskId}/export/manifest`;
 }
