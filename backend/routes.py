@@ -292,6 +292,64 @@ async def get_tasks():
     return await list_tasks()
 
 
+@router.get("/screenplay/{task_id}/export/zip")
+async def export_zip(task_id: str):
+    """导出项目压缩包 (剧本 + 素材清单 + Word)"""
+    task = await get_task(task_id)
+    if not task or not task.get("result"):
+        raise HTTPException(status_code=404, detail="剧本不存在")
+
+    import zipfile, io, yaml as _yaml
+    data = task["result"]
+    title = data.get("meta", {}).get("title", "screenplay")
+    buf = io.BytesIO()
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 剧本 YAML
+        yaml_str = _yaml.dump(data, allow_unicode=True, sort_keys=False,
+                              default_flow_style=False, indent=2)
+        zf.writestr(f"{title}_剧本.yaml", yaml_str.encode("utf-8"))
+
+        # 素材清单 YAML
+        manifest = {"meta": {"title": title, "version": "v0.4"}, "characters": {}, "scenes": {}}
+        for c in data.get("characters", []):
+            mid = c.get("material_id", c.get("character_id", "?"))
+            manifest["characters"][mid] = {
+                "name": c.get("canonical_name", ""), "aliases": c.get("aliases", []),
+                "role": c.get("role_type", ""), "gender": c.get("gender", ""),
+                "age": c.get("age_range", ""), "description": c.get("description", ""),
+            }
+        for s in data.get("scenes", []):
+            mid = s.get("material_id", s.get("scene_id", "?"))
+            manifest["scenes"][mid] = {
+                "location": s.get("location", ""), "time_of_day": s.get("time_of_day", ""),
+                "atmosphere": s.get("atmosphere", ""), "shot_count": len(s.get("shots", [])),
+            }
+        zf.writestr(f"{title}_素材清单.yaml", _yaml.dump(
+            manifest, allow_unicode=True, sort_keys=False, default_flow_style=False, indent=2
+        ).encode("utf-8"))
+
+        # Word 文档
+        from docx import Document
+        doc = Document()
+        doc.add_heading(title, 0)
+        for scene in data.get("scenes", []):
+            doc.add_heading(f"S{scene.get('scene_number','')} · {scene.get('location','')}", level=2)
+            for shot in scene.get("shots", []):
+                p = doc.add_paragraph()
+                p.add_run(f"Shot {shot.get('shot_number','')}  {shot.get('shot_type','')} · {shot.get('camera_movement','')}").bold = True
+                dia = shot.get("dialogue")
+                if dia: doc.add_paragraph(f"  {dia.get('character','')}: 「{dia.get('line','')}」")
+        word_buf = io.BytesIO()
+        doc.save(word_buf)
+        word_buf.seek(0)
+        zf.writestr(f"{title}_剧本.docx", word_buf.read())
+
+    buf.seek(0)
+    return Response(content=buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f"attachment; filename={title}_project.zip"})
+
+
 @router.get("/screenplay/{task_id}/export/manifest")
 async def export_manifest(task_id: str):
     """导出素材清单 (C/S/P 编号体系)"""

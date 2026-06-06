@@ -5,7 +5,7 @@ import { Sidebar } from "./components/Sidebar";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { DropZone, ChapterTree } from "./components/DropZone";
 import { LogDrawer } from "./components/LogDrawer";
-import { getYamlUrl, getWordUrl, getManifestUrl, saveScreenplay } from "./api/client";
+import { getYamlUrl, getWordUrl, getManifestUrl, getZipUrl, saveScreenplay } from "./api/client";
 
 const LEFT_MIN = 240;
 const LEFT_MAX = 500;
@@ -407,7 +407,10 @@ function Header({ status, msg, hasSP, showExport, setShowExport, taskId, onReset
               <button onClick={() => setShowExport(!showExport)}
                 className="text-[10px] px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700/50 transition-colors">Export</button>
               {showExport && taskId && (
-                <div className="absolute right-0 top-8 w-36 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
+                <div className="absolute right-0 top-8 w-40 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
+                  <a href={getZipUrl(taskId)} onClick={() => setShowExport(false)}
+                    className="block px-3 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700 font-medium">All in One (.zip)</a>
+                  <div className="border-t border-zinc-700 my-0.5" />
                   <a href={getYamlUrl(taskId)} onClick={() => setShowExport(false)}
                     className="block px-3 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700">YAML (AI Pipeline)</a>
                   <a href={getManifestUrl(taskId)} onClick={() => setShowExport(false)}
