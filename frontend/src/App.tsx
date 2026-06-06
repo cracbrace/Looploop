@@ -519,7 +519,7 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
                    placeholder-zinc-600 resize-none focus:outline-none focus:border-zinc-500 transition-colors"
         disabled={loading} />
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-zinc-600">{effectiveText.length} chars (min 100)</span>
+        <span className="text-xs text-zinc-600">{effectiveText.split("\n").length} lines · {effectiveText.length} chars (min 100)</span>
         <button onClick={onSubmit} disabled={effectiveText.trim().length < 100 || loading}
           className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40
                      disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors">
