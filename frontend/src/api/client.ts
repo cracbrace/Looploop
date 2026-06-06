@@ -109,6 +109,10 @@ export function getYamlUrl(taskId: string): string {
   return `${BASE}/screenplay/${taskId}/export/yaml`;
 }
 
+export function getManifestUrl(taskId: string): string {
+  return `${BASE}/screenplay/${taskId}/export/manifest`;
+}
+
 export function getWordUrl(taskId: string): string {
   return `${BASE}/screenplay/${taskId}/export/word`;
 }

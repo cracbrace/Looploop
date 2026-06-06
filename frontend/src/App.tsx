@@ -5,7 +5,7 @@ import { Sidebar } from "./components/Sidebar";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { DropZone, ChapterTree } from "./components/DropZone";
 import { LogDrawer } from "./components/LogDrawer";
-import { getYamlUrl, getWordUrl, saveScreenplay } from "./api/client";
+import { getYamlUrl, getWordUrl, getManifestUrl, saveScreenplay } from "./api/client";
 
 const LEFT_MIN = 240;
 const LEFT_MAX = 500;
@@ -409,6 +409,8 @@ function Header({ status, msg, hasSP, showExport, setShowExport, taskId, onReset
                 <div className="absolute right-0 top-8 w-36 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
                   <a href={getYamlUrl(taskId)} onClick={() => setShowExport(false)}
                     className="block px-3 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700">YAML (AI Pipeline)</a>
+                  <a href={getManifestUrl(taskId)} onClick={() => setShowExport(false)}
+                    className="block px-3 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700">Manifest (C/S/P)</a>
                   <a href={getWordUrl(taskId)} onClick={() => setShowExport(false)}
                     className="block px-3 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700">Word (Edit)</a>
                 </div>
