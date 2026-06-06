@@ -7,6 +7,7 @@ v0.2: 后端存储从内存 dict 迁移到 SQLite。
 
 import asyncio
 import json
+import re
 import uuid
 from typing import Optional
 
@@ -96,7 +97,7 @@ async def convert_novel(request: ConvertRequest):
     task_id = uuid.uuid4().hex[:12]
     title = request.title or "Untitled"
 
-    await create_task(task_id, title, original_text=request.text)
+    await create_task(task_id, title, original_text=_normalize_original(request.text))
     asyncio.create_task(_run_pipeline(task_id, request))
 
     return {"task_id": task_id}
@@ -314,6 +315,24 @@ async def update_screenplay(task_id: str, body: ScreenplayUpdate):
 # ============================================================
 # Pipeline 后台执行
 # ============================================================
+
+def _normalize_original(text: str) -> str:
+    """在存储原始文本前，将内联章节标记物理拆分为独立段落。
+
+    text_splitter 的正则匹配依赖行首 ^ 锚点和换行符分隔，
+    但用户粘贴的文本可能章节之间无换行（如 "…信号。第二章…"）。
+    如果在存储时不拆开，前端的 paragraphs = text.split('\n\n') 会把
+    整篇小说当成一个巨型段落，导致 source_paragraphs 的 0 号索引覆盖全文。
+
+    此函数与 text_splitter._normalize 保持一致，确保前端段落索引与
+    Pipeline 提取的段落索引一一对应。
+    """
+    t = text.replace("\r\n", "\n").replace("\r", "\n")
+    # 在非行首的章节标记前插入两个换行，使其成为独立段落
+    t = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)", r"\n\n\1", t)
+    t = re.sub(r"(?<=[.?!\n])\s*(Chapter\s+\d+)", r"\n\n\1", t, flags=re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
 
 async def _run_pipeline(task_id: str, request: ConvertRequest):
     """后台执行 Pipeline，通过数据库更新进度"""
