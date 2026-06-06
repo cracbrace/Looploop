@@ -126,6 +126,15 @@ export async function deleteTask(taskId: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete task");
 }
 
+export async function renameTask(taskId: string, title: string): Promise<void> {
+  const res = await fetch(`${BASE}/tasks/${taskId}/title`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error("Failed to rename task");
+}
+
 export async function saveScreenplay(
   taskId: string,
   screenplay: Screenplay
