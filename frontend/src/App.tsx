@@ -234,33 +234,33 @@ function App() {
               onSelect={handleHistorySelect}
               refreshKey={historyKey}
             />
-            <div className="p-3">
-              <div className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-wider mb-2">Shot Detail</div>
+            <div className="p-3 min-w-0">
+              <div className="text-xs font-bold text-emerald-500/80 uppercase tracking-wider mb-2">Shot Detail</div>
               {selectedShot ? (
-                <div className="space-y-1.5 text-[11px] text-zinc-400">
-                  <div><span className="text-zinc-600">ID</span> <span className="text-emerald-400/70 ml-1 font-mono">{selectedShot.material_id || selectedShot.shot_id}</span></div>
+                <div className="space-y-2 text-xs text-zinc-400 min-w-0">
+                  <div><span className="text-zinc-600">ID</span> <span className="text-emerald-400/70 ml-1 font-mono text-xs">{selectedShot.material_id || selectedShot.shot_id}</span></div>
                   <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
                   <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
                   <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
-                  <div><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
-                  {selectedShot.sfx && <div><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
+                  <div className="break-words"><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
+                  {selectedShot.sfx && <div className="break-words"><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
                   {(selectedShot as any).timeline && (selectedShot as any).timeline.length > 0 && (
-                    <div className="pt-1.5 mt-1.5 border-t border-zinc-800/50">
-                      <p className="text-zinc-500 mb-0.5">Timeline</p>
+                    <div className="pt-2 mt-1 border-t border-zinc-800/50">
+                      <p className="text-zinc-500 mb-1 text-xs">Timeline</p>
                       {(selectedShot as any).timeline.map((s: string, i: number) => (
-                        <div key={i} className="text-[10px] text-emerald-400/70 leading-relaxed">
+                        <div key={i} className="text-xs text-emerald-400/70 leading-relaxed break-words">
                           &#9655; {s}
                         </div>
                       ))}
                     </div>
                   )}
-                  <div className="pt-1.5 mt-1.5 border-t border-zinc-800/50">
-                    <p className="text-zinc-500 mb-0.5">Visual Prompt</p>
-                    <p className="text-zinc-300 leading-snug break-words">{selectedShot.visual_prompt}</p>
+                  <div className="pt-2 mt-1 border-t border-zinc-800/50">
+                    <p className="text-zinc-500 mb-1 text-xs">Visual Prompt</p>
+                    <p className="text-zinc-300 leading-relaxed break-words text-sm">{selectedShot.visual_prompt}</p>
                   </div>
                 </div>
               ) : (
-                <p className="text-[11px] text-zinc-600">Click a shot to see details</p>
+                <p className="text-xs text-zinc-600">Click a shot to see details</p>
               )}
             </div>
           </div>
