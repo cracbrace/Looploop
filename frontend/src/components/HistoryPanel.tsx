@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { fetchHistory, deleteTask } from "../api/client";
+import { useState, useEffect, useRef } from "react";
+import { fetchHistory, deleteTask, renameTask } from "../api/client";
 
 interface HistoryItem {
   task_id: string;
@@ -17,6 +17,9 @@ interface HistoryPanelProps {
 export function HistoryPanel({ currentTaskId, onSelect, refreshKey }: HistoryPanelProps) {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -37,6 +40,24 @@ export function HistoryPanel({ currentTaskId, onSelect, refreshKey }: HistoryPan
       await deleteTask(taskId);
       setItems((prev) => prev.filter((i) => i.task_id !== taskId));
     } catch { /* ignore */ }
+  };
+
+  const startEdit = (item: HistoryItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(item.task_id);
+    setEditTitle(item.title);
+    setTimeout(() => editRef.current?.focus(), 0);
+  };
+
+  const saveEdit = async (taskId: string) => {
+    const trimmed = editTitle.trim();
+    if (trimmed && trimmed !== items.find(i => i.task_id === taskId)?.title) {
+      try {
+        await renameTask(taskId, trimmed);
+        setItems((prev) => prev.map(i => i.task_id === taskId ? { ...i, title: trimmed } : i));
+      } catch { /* ignore */ }
+    }
+    setEditingId(null);
   };
 
   const formatTime = (iso: string) => {
@@ -81,7 +102,24 @@ export function HistoryPanel({ currentTaskId, onSelect, refreshKey }: HistoryPan
                   : "text-zinc-400 hover:bg-zinc-800/30 hover:text-zinc-200"
                 }`}
             >
-              <div className="text-xs font-medium truncate">{item.title}</div>
+              {editingId === item.task_id ? (
+                <input
+                  ref={editRef}
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onBlur={() => saveEdit(item.task_id)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(item.task_id); if (e.key === "Escape") setEditingId(null); }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs font-medium bg-zinc-700 border border-zinc-500 rounded px-1 py-0 w-full
+                             text-zinc-200 focus:outline-none focus:border-emerald-500"
+                />
+              ) : (
+                <div
+                  className="text-xs font-medium truncate cursor-text hover:text-zinc-200 transition-colors"
+                  onDoubleClick={(e) => startEdit(item, e)}
+                  title="Double-click to rename"
+                >{item.title}</div>
+              )}
               <div className="flex items-center justify-between mt-0.5">
                 <span className="text-[10px] text-zinc-500">
                   {formatTime(item.created_at)}

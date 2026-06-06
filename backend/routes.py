@@ -292,6 +292,19 @@ async def get_tasks():
     return await list_tasks()
 
 
+@router.patch("/tasks/{task_id}/title")
+async def rename_task(task_id: str, body: dict = {}):
+    """重命名历史任务标题"""
+    new_title = body.get("title", "").strip()
+    if not new_title:
+        raise HTTPException(status_code=422, detail="Title cannot be empty")
+    task = await get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    await update_task(task_id, title=new_title)
+    return {"ok": True, "title": new_title}
+
+
 @router.delete("/tasks/{task_id}")
 async def remove_task(task_id: str):
     """删除历史任务"""
