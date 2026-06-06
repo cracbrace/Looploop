@@ -176,6 +176,16 @@ export function ShotCard({ shot, shotIndex, isSelected, onClick, onRegenerate, o
       ) : (
         <p className="text-xs text-zinc-600 mt-1 italic">No dialogue</p>
       )}
+      {"timeline" in shot && (shot as any).timeline && (shot as any).timeline.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-zinc-800/50">
+          {(shot as any).timeline.map((step: string, i: number) => (
+            <div key={i} className="flex items-start gap-1.5 text-[10px] text-zinc-500 leading-relaxed">
+              <span className="text-emerald-600/70 font-mono shrink-0 mt-px">&#9655;</span>
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <EditableField
         value={shot.visual_prompt}
         onSave={(v) => edit("visual_prompt", v)}

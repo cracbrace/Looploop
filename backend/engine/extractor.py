@@ -90,7 +90,10 @@ class ChapterExtractor:
    - 情感爆发 → 特写/大特写
    - 紧张追逐 → 手持 + 跟随
 5. **对白提取**：逐字引用原文对白，不要改写
-6. **角色名**：如果提供了角色表，请使用 canonical_name；如果遇到新角色，使用原文中的名字并在 characters_found 中列出
+6. **时间轴分段**：对于超过 5s 的镜头，尝试拆分为 2-3 个时间段：
+   格式: ["0-3s: 远景建立场景", "3-6s: 推进至中景", "6-8s: 特写捕捉表情"]
+   短镜头 (≤5s) 可以留空 timeline 字段
+7. **角色名**：如果提供了角色表，请使用 canonical_name；如果遇到新角色，使用原文中的名字并在 characters_found 中列出
 
 ## 镜头语言参考
 
@@ -270,6 +273,7 @@ class ChapterExtractor:
                     sfx=shot_data.get("sfx", ""),
                     bgm=shot_data.get("bgm", ""),
                     duration=shot_data.get("duration", "5s"),
+                    timeline=shot_data.get("timeline") if shot_data.get("timeline") else None,
                     source_paragraphs=shot_paras if shot_paras else scene_paras,
                 ))
 

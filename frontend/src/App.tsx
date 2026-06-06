@@ -244,6 +244,16 @@ function App() {
                   <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
                   <div><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
                   {selectedShot.sfx && <div><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
+                  {(selectedShot as any).timeline && (selectedShot as any).timeline.length > 0 && (
+                    <div className="pt-1.5 mt-1.5 border-t border-zinc-800/50">
+                      <p className="text-zinc-500 mb-0.5">Timeline</p>
+                      {(selectedShot as any).timeline.map((s: string, i: number) => (
+                        <div key={i} className="text-[10px] text-emerald-400/70 leading-relaxed">
+                          &#9655; {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="pt-1.5 mt-1.5 border-t border-zinc-800/50">
                     <p className="text-zinc-500 mb-0.5">Visual Prompt</p>
                     <p className="text-zinc-300 leading-snug break-words">{selectedShot.visual_prompt}</p>
