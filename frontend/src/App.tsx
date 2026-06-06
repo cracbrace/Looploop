@@ -223,65 +223,58 @@ function App() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* 左侧边栏：历史/场景导航/角色 + 底部 Shot Detail */}
+        {/* 左侧边栏：三层架构 */}
         {/* ═══════════════════════════════════════════════════════ */}
         <div style={{ width: `${leftWidth}px` }}
           className="flex flex-col flex-shrink-0 bg-[#0c0c0c] border-r border-zinc-800/60 overflow-hidden">
-          {/* Upper: Shot Detail (high info density, benefits from flex space) */}
-          <div className="flex-1 overflow-y-auto">
+
+          {/* L1: HISTORY — 置顶，flex-shrink-0 */}
+          <div className="flex-shrink-0">
             <HistorySection
               currentTaskId={taskId}
               onSelect={handleHistorySelect}
               refreshKey={historyKey}
             />
-            <div className="p-3 min-w-0">
-              <div className="text-xs font-bold text-emerald-500/80 uppercase tracking-wider mb-2">Shot Detail</div>
-              {selectedShot ? (
-                <div className="space-y-2 text-xs text-zinc-400 min-w-0">
-                  <div><span className="text-zinc-600">ID</span> <span className="text-emerald-400/70 ml-1 font-mono text-xs">{selectedShot.material_id || selectedShot.shot_id}</span></div>
-                  <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
-                  <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
-                  <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
-                  <div className="break-words"><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
-                  {selectedShot.sfx && <div className="break-words"><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
-                  {(selectedShot as any).timeline && (selectedShot as any).timeline.length > 0 && (
-                    <div className="pt-2 mt-1 border-t border-zinc-800/50">
-                      <p className="text-zinc-500 mb-1 text-xs">Timeline</p>
-                      {(selectedShot as any).timeline.map((s: string, i: number) => (
-                        <div key={i} className="text-xs text-emerald-400/70 leading-relaxed break-words">
-                          &#9655; {s}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="pt-2 mt-1 border-t border-zinc-800/50">
-                    <p className="text-zinc-500 mb-1 text-xs">Visual Prompt</p>
-                    <p className="text-zinc-300 leading-relaxed break-words text-sm">{selectedShot.visual_prompt}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-zinc-600">Click a shot to see details</p>
-              )}
-            </div>
           </div>
-          {/* Bottom: Scene nav + Characters (compact, low density) */}
-          <div className="border-t border-zinc-800/80 bg-[#090909] shrink-0">
-            <Sidebar
-              scenes={screenplay.scenes} characters={screenplay.characters}
-              meta={screenplay.meta} totalCharacters={screenplay.characters.length}
-              selectedSceneIndex={selectedSceneIndex} onSelectScene={setSelectedSceneIndex}
+
+          {/* L2: 资产导航区 — max-h-[35vh] 限制高度，内容少时自动收缩 */}
+          <div className="max-h-[35vh] flex-shrink-0 overflow-y-auto flex flex-col border-t border-zinc-800/60">
+            <AssetNav
+              scenes={screenplay.scenes}
+              characters={screenplay.characters}
+              meta={screenplay.meta}
+              selectedSceneIndex={selectedSceneIndex}
+              onSelectScene={setSelectedSceneIndex}
             />
           </div>
-          {/* Scene nav + Characters (compact, fixed bottom) */}
-          <div className="h-40 border-t border-zinc-800/80 bg-[#090909] p-3 overflow-y-auto shrink-0">
-            {screenplay.characters.map((c: any) => (
-              <span key={c.character_id} className="inline-block text-[11px] text-zinc-400 mr-3 mb-1">
-                {c.canonical_name}
-              </span>
-            ))}
-            <div className="text-[10px] text-zinc-600 mt-2 pt-2 border-t border-zinc-800/50">
-              {screenplay.meta.total_scenes} scenes · {screenplay.meta.total_shots} shots · {screenplay.meta.total_duration_estimate}
-            </div>
+
+          {/* L3: SHOT DETAIL — flex-1 接管全部剩余空间 */}
+          <div className="flex-1 min-h-0 flex flex-col border-t border-zinc-800/80 bg-[#090909] p-4">
+            <div className="text-sm font-bold text-emerald-500/80 uppercase tracking-wider mb-2 flex-shrink-0">Shot Detail</div>
+            {selectedShot ? (
+              <div className="flex-1 overflow-y-auto space-y-2 text-sm text-zinc-400 min-w-0">
+                <div><span className="text-zinc-600">ID</span> <span className="text-emerald-400/70 ml-1 font-mono">{selectedShot.material_id || selectedShot.shot_id}</span></div>
+                <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
+                <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
+                <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
+                <div className="break-words whitespace-pre-wrap"><span className="text-zinc-600">Focus</span> <span className="text-zinc-200 ml-1">{selectedShot.focus_subject}</span></div>
+                {selectedShot.sfx && <div className="break-words whitespace-pre-wrap"><span className="text-zinc-600">SFX</span> <span className="text-amber-400/70 ml-1">{selectedShot.sfx}</span></div>}
+                {(selectedShot as any).timeline && (selectedShot as any).timeline.length > 0 && (
+                  <div className="pt-2 mt-1 border-t border-zinc-800/50">
+                    <p className="text-zinc-500 mb-1">Timeline</p>
+                    {(selectedShot as any).timeline.map((s: string, i: number) => (
+                      <div key={i} className="text-sm text-emerald-400/70 leading-relaxed break-words whitespace-pre-wrap">&#9655; {s}</div>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-2 mt-1 border-t border-zinc-800/50">
+                  <p className="text-zinc-500 mb-1">Visual Prompt</p>
+                  <p className="text-zinc-300 leading-relaxed break-words whitespace-pre-wrap">{selectedShot.visual_prompt}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-600">Click a shot to see details</p>
+            )}
           </div>
         </div>
 
@@ -390,6 +383,58 @@ function App() {
 // ═══════════════════════════════════════════════════════════
 // Sub-components
 // ═══════════════════════════════════════════════════════════
+
+function AssetNav({ scenes, characters, meta, selectedSceneIndex, onSelectScene }: {
+  scenes: any[]; characters: any[]; meta: any;
+  selectedSceneIndex: number; onSelectScene: (i: number) => void;
+}) {
+  const [tab, setTab] = useState<"scenes" | "characters">("scenes");
+  return (
+    <>
+      {/* Tab bar */}
+      <div className="flex border-b border-zinc-800/60 shrink-0">
+        <button onClick={() => setTab("scenes")}
+          className={`flex-1 text-[10px] font-semibold uppercase tracking-wider py-2 transition-colors
+            ${tab === "scenes" ? "text-zinc-200 border-b border-emerald-500/70" : "text-zinc-500 hover:text-zinc-300"}`}>
+          Scenes
+        </button>
+        <button onClick={() => setTab("characters")}
+          className={`flex-1 text-[10px] font-semibold uppercase tracking-wider py-2 transition-colors
+            ${tab === "characters" ? "text-zinc-200 border-b border-emerald-500/70" : "text-zinc-500 hover:text-zinc-300"}`}>
+          Characters
+        </button>
+      </div>
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {tab === "scenes" ? (
+          <div className="p-3">
+            {scenes.map((s: any, i: number) => (
+              <button key={s.scene_id} onClick={() => onSelectScene(i)}
+                className={`w-full text-left px-3 py-2 rounded text-sm mb-1 transition-colors
+                  ${i === selectedSceneIndex ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"}`}>
+                {s.material_id || s.scene_id} &middot; {s.location}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="p-3">
+            {characters.map((c: any) => (
+              <div key={c.character_id} className="px-3 py-1.5 text-sm text-zinc-400">
+                <span className="text-zinc-500 text-xs font-mono mr-2">{c.material_id || c.character_id}</span>
+                {c.canonical_name}
+                {c.role_type && <span className="text-zinc-600 text-xs ml-1">· {c.role_type}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Stats footer */}
+      <div className="text-[10px] text-zinc-600 px-3 py-2 border-t border-zinc-800/60 shrink-0">
+        {meta.total_scenes} scenes · {meta.total_shots} shots · {meta.total_duration_estimate}
+      </div>
+    </>
+  );
+}
 
 function Header({ status, msg, hasSP, showExport, setShowExport, taskId, onReset, canUndo, canRedo, onUndo, onRedo }: {
   status: string; msg: string; hasSP: boolean;
