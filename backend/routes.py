@@ -341,8 +341,18 @@ async def _run_pipeline(task_id: str, request: ConvertRequest):
             )
 
         screenplay = await pipeline.run(request.text, meta_overrides)
+
+        # 回填标题：优先 LLM 生成的标题，其次用户提供的，最后用文本第一行
+        final_title = screenplay.meta.title if screenplay.meta.title and screenplay.meta.title != "Untitled" else None
+        if not final_title and request.title:
+            final_title = request.title
+        if not final_title:
+            first_line = request.text.strip().split("\n")[0][:60]
+            final_title = first_line or "Untitled"
+
         await update_task(
             task_id,
+            title=final_title,
             result=screenplay.model_dump(),
             progress=1.0,
             stage="done",

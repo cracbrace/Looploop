@@ -140,6 +140,9 @@ def _row_to_dict(row: aiosqlite.Row) -> dict:
         except json.JSONDecodeError:
             d["result"] = None
         del d["result_json"]
+    # Normalize created_at to ISO 8601 for reliable frontend parsing
+    if d.get("created_at"):
+        d["created_at"] = d["created_at"].replace(" ", "T")
     # Keep original_text field, ensure it's a string
     if "original_text" not in d:
         d["original_text"] = ""
