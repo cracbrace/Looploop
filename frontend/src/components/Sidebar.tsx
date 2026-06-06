@@ -1,10 +1,12 @@
 interface SidebarProps {
   scenes: Array<{
     scene_id: string;
+    material_id?: string;
     location: string;
   }>;
   characters: Array<{
     character_id: string;
+    material_id?: string;
     canonical_name: string;
   }>;
   meta: {
@@ -40,7 +42,7 @@ export function Sidebar({
               : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
             }`}
         >
-          {s.scene_id} &middot; {s.location}
+          {(s as any).material_id || s.scene_id} &middot; {s.location}
         </button>
       ))}
 
@@ -49,7 +51,7 @@ export function Sidebar({
       </h3>
       {characters.map((c) => (
         <div key={c.character_id} className="text-xs text-zinc-500 px-3 py-1">
-          {c.canonical_name}
+          {(c as any).material_id || c.character_id} {c.canonical_name}
         </div>
       ))}
 

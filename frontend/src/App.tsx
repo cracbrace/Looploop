@@ -238,6 +238,7 @@ function App() {
               <div className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-wider mb-2">Shot Detail</div>
               {selectedShot ? (
                 <div className="space-y-1.5 text-[11px] text-zinc-400">
+                  <div><span className="text-zinc-600">ID</span> <span className="text-emerald-400/70 ml-1 font-mono">{selectedShot.material_id || selectedShot.shot_id}</span></div>
                   <div><span className="text-zinc-600">Type</span> <span className="text-zinc-200 ml-1">{selectedShot.shot_type}</span></div>
                   <div><span className="text-zinc-600">Movement</span> <span className="text-zinc-200 ml-1">{selectedShot.camera_movement}</span></div>
                   <div><span className="text-zinc-600">Duration</span> <span className="text-zinc-200 ml-1">{selectedShot.duration}</span></div>
