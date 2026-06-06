@@ -58,10 +58,10 @@ class TextSplitter:
 
     # 章节匹配模式
     CHAPTER_PATTERNS = [
-        re.compile(r"^第[一二三四五六七八九十百千\d]+章\b", re.MULTILINE),
+        re.compile(r"^第[一二三四五六七八九十百千\d]+章", re.MULTILINE),
         re.compile(r"^Chapter\s+\d+", re.MULTILINE | re.IGNORECASE),
-        re.compile(r"^第[一二三四五六七八九十百千\d]+回\b", re.MULTILINE),
-        re.compile(r"^第[一二三四五六七八九十百千\d]+节\b", re.MULTILINE),
+        re.compile(r"^第[一二三四五六七八九十百千\d]+回", re.MULTILINE),
+        re.compile(r"^第[一二三四五六七八九十百千\d]+节", re.MULTILINE),
     ]
 
     # 句子分隔符（中英文）
@@ -138,7 +138,7 @@ class TextSplitter:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         # 关键修复: 在非行首的章节标记前插入 \n，确保 ^ 锚点匹配
         # 处理形如 "...信号。第二章 信号..." 的排版
-        text = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)", r"\n\1", text)
+        text = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])", r"\n\1", text)
         text = re.sub(r"(?<=[.?!\n])\s*(Chapter\s+\d+)", r"\n\1", text, flags=re.IGNORECASE)
         # 合并 3 个以上连续空行为 2 个
         text = re.sub(r"\n{3,}", "\n\n", text)

@@ -438,7 +438,7 @@ def _normalize_original(text: str) -> str:
     """
     t = text.replace("\r\n", "\n").replace("\r", "\n")
     # 在非行首的章节标记前插入两个换行，使其成为独立段落
-    t = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)", r"\n\n\1", t)
+    t = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])", r"\n\n\1", t)
     t = re.sub(r"(?<=[.?!\n])\s*(Chapter\s+\d+)", r"\n\n\1", t, flags=re.IGNORECASE)
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 

@@ -16,12 +16,12 @@ interface DropZoneProps {
   disabled: boolean;
 }
 
-const CHAPTER_RE = /^(第[一二三四五六七八九十百千\d]+[章节回]\b|Chapter\s+\d+)/m;
+const CHAPTER_RE = /^(第[一二三四五六七八九十百千\d]+[章节回]|Chapter\s+\d+)/m;
 
 function normalizeText(raw: string): string {
   let t = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   // 在非行首的章节标记前插入换行
-  t = t.replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)/g, "\n$1");
+  t = t.replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])/g, "\n$1");
   t = t.replace(/(?<=[.?!\n])\s*(Chapter\s+\d+)/gi, "\n$1");
   return t.replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -32,6 +32,7 @@ export function DropZone({ onChaptersReady, onTextReady, disabled }: DropZonePro
 
   const parseText = useCallback((raw: string) => {
     const normalized = normalizeText(raw);
+    console.log("[ChapterTree] parseText called, raw length:", raw.length, "normalized length:", normalized.length);
     const lines = normalized.split("\n");
     const chapters: ChapterInfo[] = [];
     let currentChapter: ChapterInfo | null = null;
@@ -68,7 +69,9 @@ export function DropZone({ onChaptersReady, onTextReady, disabled }: DropZonePro
       chapters.push(currentChapter);
     }
 
-    // 未识别到章节 → 全文作为一个章节
+    console.log("[ChapterTree] detected chapters:", chapters.length,
+      chapters.map(c => c.title).join(", "),
+      "will call onChaptersReady after fallback check");
     if (chapters.length === 0) {
       chapters.push({
         index: 0, title: "全文", preview: raw.slice(0, 100).replace(/\n/g, " "),
@@ -138,7 +141,11 @@ export function ChapterTree({ chapters, onToggle, onSelectAll, onDeselectAll }: 
   onSelectAll: () => void;
   onDeselectAll: () => void;
 }) {
-  if (chapters.length <= 1) return null;
+  console.log("[ChapterTree] render called, chapters.length:", chapters.length);
+  if (chapters.length <= 1) {
+    console.log("[ChapterTree] hidden — need ≥2 chapters, got", chapters.length);
+    return null;
+  }
 
   const selected = chapters.filter((c) => c.selected).length;
   return (

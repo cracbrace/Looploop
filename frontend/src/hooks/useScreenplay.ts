@@ -41,7 +41,7 @@ export function useScreenplay() {
     // Normalize text to match backend text_splitter._normalize,
     // ensuring paragraph indices align with source_paragraphs from pipeline
     const norm = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-      .replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)/g, "\n\n$1")
+      .replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])/g, "\n\n$1")
       .replace(/\n{3,}/g, "\n\n").trim();
     setOriginalText(norm);
     setParagraphs(norm.split("\n\n"));

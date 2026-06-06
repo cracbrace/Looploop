@@ -478,18 +478,19 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
   useEffect(() => {
     if (chapterTimer.current) clearTimeout(chapterTimer.current);
     chapterTimer.current = setTimeout(() => {
+      console.log("[ChapterTree] InputView debounce fired, text.length:", text.length, "chapters.length:", chapters.length);
       if (text.trim().length > 50 && chapters.length === 0) {
         // Only trigger if no chapters detected yet (DropZone takes priority)
         // Manually parse here using same logic as DropZone
         const norm = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-          .replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)/g, "\n$1")
+          .replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])/g, "\n$1")
           .replace(/\n{3,}/g, "\n\n").trim();
         const lines = norm.split("\n");
         const chs: any[] = [];
         let cur: any = null;
         for (let i = 0; i < lines.length; i++) {
           const t = lines[i].trim();
-          if (/^(第[一二三四五六七八九十百千\d]+[章节回]\b|Chapter\s+\d+)/m.test(t)) {
+          if (/^(第[一二三四五六七八九十百千\d]+[章节回]|Chapter\s+\d+)/m.test(t)) {
             if (cur) { cur.endLine = i; cur.text = lines.slice(cur.startLine, i).join("\n"); chs.push(cur); }
             cur = { index: chs.length, title: t.slice(0, 60), preview: "", selected: true, startLine: i, endLine: i, text: "" };
           } else if (cur && t && cur.preview.length < 80) {
@@ -497,6 +498,7 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
           }
         }
         if (cur) { cur.endLine = lines.length; cur.text = lines.slice(cur.startLine, lines.length).join("\n"); chs.push(cur); }
+        console.log("[ChapterTree] InputView debounce parsed chapters:", chs.length, chs.map((c: any) => c.title).join(", "));
         if (chs.length > 1) setChapters(chs);
       }
     }, 600);
