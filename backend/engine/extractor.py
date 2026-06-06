@@ -32,6 +32,7 @@ class RawShot:
     sfx: str = ""             # 音效
     bgm: str = ""             # 配乐
     duration: str = "5s"      # 时长
+    timeline: list[str] | None = None  # v0.4: 镜头内时间轴分段
     source_paragraphs: list[int] = field(default_factory=list)
 
 
