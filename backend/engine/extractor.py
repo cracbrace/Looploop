@@ -130,6 +130,7 @@ class ChapterExtractor:
         chunk_id: str = "",
         chapter_index: int = 0,
         character_registry: dict | None = None,
+        paragraph_offset: int = 0,
     ) -> ExtractionResult:
         """
         从一个文本 Chunk 中提取结构化场景/镜头/对白。
@@ -154,7 +155,7 @@ class ChapterExtractor:
         )
 
         return self._parse_response(
-            raw_json, chunk_id, chapter_index
+            raw_json, chunk_id, chapter_index, paragraph_offset
         )
 
     # ============================================================
@@ -241,14 +242,20 @@ class ChapterExtractor:
         raw_json: str,
         chunk_id: str,
         chapter_index: int,
+        paragraph_offset: int = 0,
     ) -> ExtractionResult:
-        """解析 LLM 返回的 JSON 为 ExtractionResult"""
+        """解析 LLM 返回的 JSON 为 ExtractionResult，将局部段落索引转为全局"""
         data = json.loads(raw_json)
+
+        def globalize(indices: list[int]) -> list[int]:
+            return [i + paragraph_offset for i in indices] if indices else []
 
         scenes = []
         for scene_data in data.get("scenes", []):
+            scene_paras = globalize(scene_data.get("source_paragraphs", []))
             shots = []
             for shot_data in scene_data.get("shots", []):
+                shot_paras = globalize(shot_data.get("source_paragraphs", []))
                 shots.append(RawShot(
                     shot_type=shot_data.get("shot_type", ""),
                     camera_movement=shot_data.get("camera_movement", ""),
@@ -262,7 +269,7 @@ class ChapterExtractor:
                     sfx=shot_data.get("sfx", ""),
                     bgm=shot_data.get("bgm", ""),
                     duration=shot_data.get("duration", "5s"),
-                    source_paragraphs=scene_data.get("source_paragraphs", []),
+                    source_paragraphs=shot_paras if shot_paras else scene_paras,
                 ))
 
             scenes.append(RawScene(
@@ -272,7 +279,7 @@ class ChapterExtractor:
                 weather=scene_data.get("weather", ""),
                 era=scene_data.get("era", ""),
                 duration_estimate=scene_data.get("duration_estimate", "30s"),
-                source_paragraphs=scene_data.get("source_paragraphs", []),
+                source_paragraphs=scene_paras,
                 shots=shots,
             ))
 

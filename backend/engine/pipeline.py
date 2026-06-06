@@ -100,6 +100,7 @@ class Pipeline:
                     chunk_text=chunk.text, chunk_id=chunk.chunk_id,
                     chapter_index=chunk.chapter_index,
                     character_registry=registry if registry else None,
+                    paragraph_offset=chunk.paragraph_start,
                 )
             batch_results = await asyncio.gather(*[extract_one(c) for c in batch])
 
@@ -195,6 +196,7 @@ class Pipeline:
                     chunk_id=chunk.chunk_id,
                     chapter_index=chunk.chapter_index,
                     character_registry=registry if registry else None,
+                    paragraph_offset=chunk.paragraph_start,
                 )
 
             batch_tasks = [extract_one(c, batch_start + i) for i, c in enumerate(batch)]
