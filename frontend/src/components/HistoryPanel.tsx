@@ -108,7 +108,7 @@ export function HistoryPanel({ currentTaskId, onSelect, refreshKey }: HistoryPan
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   onBlur={() => saveEdit(item.task_id)}
-                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(item.task_id); if (e.key === "Escape") setEditingId(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); saveEdit(item.task_id); } if (e.key === "Escape") { e.preventDefault(); setEditingId(null); } }}
                   onClick={(e) => e.stopPropagation()}
                   className="text-xs font-medium bg-zinc-700 border border-zinc-500 rounded px-1 py-0 w-full
                              text-zinc-200 focus:outline-none focus:border-emerald-500"
