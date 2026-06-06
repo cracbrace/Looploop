@@ -118,6 +118,9 @@ class Pipeline:
                     registry, batch_characters, batch_text
                 )
 
+        # 后处理去重：跨 Chunk 批次归并同名/同人角色
+        registry, _ = await self.resolver.deduplicate(registry, text)
+
         # Step 4: 场景合并
         scenes = self.merger.merge(all_raw_scenes, registry)
 
@@ -236,11 +239,20 @@ class Pipeline:
                       "characters": len(registry)},
             )
 
-        refined_registry = registry
+        # 后处理去重：跨 Chunk 批次归并同名/同人角色
+        refined_registry, dedup_logs = await self.resolver.deduplicate(registry, text)
+        for log_msg in dedup_logs:
+            yield PipelineStage(
+                stage="character_update",
+                message=log_msg,
+                progress=0.72,
+                data={"log": log_msg, "characters": len(refined_registry)},
+                logs=[log_msg],
+            )
         yield PipelineStage(
             stage="characters_refine",
             message=f"角色消歧完成，共 {len(refined_registry)} 个唯一角色",
-            progress=0.70,
+            progress=0.75,
             data={"characters": len(refined_registry)},
         )
 
