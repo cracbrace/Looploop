@@ -20,6 +20,7 @@ Looploop 不是传统的"编剧辅助工具"。它的核心创新在于：**每�
 │  - 右侧上: 分镜卡片流   │   │  - 角色消歧          │   └──────────┘
 │  - 右侧下: 通栏原文面板  │   │  - Pydantic 自我修正  │
 │  - 双击编辑+单镜头重刷   │   │  - SQLite 持久化      │
+│  - C/S/P 素材编号+Timeline│   │  - 增量角色消歧       │
 │  - YAML/Word 导出      │   └─────────────────────┘
 └───────────────────────┘
 ```
@@ -91,7 +92,8 @@ npm run dev
 6. **单镜头重刷**：点击卡片上的 ↻ 按钮，输入修改意见，AI 局部重新生成
 7. **历史回溯**：左侧 History 面板加载过往转换结果（SQLite 持久化，重启不丢失）
 8. **面板拖拽**：所有面板分隔条可拖拽调整尺寸，适配不同工作习惯
-9. **导出**：Export → YAML（供 AI 管线）/ Word（供编辑阅读）
+9. **Timeline 时间轴**：每个 Shot 自动生成 `0-3s: ... / 3-8s: ...` 分段描述
+10. **导出**：Export → All in One (.zip) / YAML / Manifest (C/S/P) / Word
 
 ## 核心功能
 
@@ -106,20 +108,29 @@ npm run dev
 | **历史记录** | 过往转换可回溯、可删除 | SQLite 持久化 |
 | **可拖拽面板** | 左右/上下分隔条均可拖拽调整 | 像素级 clamp 硬限幅 |
 | **自我修正** | LLM 输出不合法 → 自动重试 | Pydantic 校验 + 错误喂回 LLM |
+| **素材编号 (C/S/P)** | C01/S01 人可读编号，下游 @C01 引用 | material_id + manifest 导出 |
+| **Timeline 时间轴** | 镜头内秒级分段：0-3s/3-8s 动态描述 | LLM 推演 + fallback 自动合成 |
+| **运镜情绪提示** | Hover 标签显示英文名+情绪+使用场景 | 11 种 camera_movement 完整字典 |
 
 ## YAML Schema
 
 详见 [`docs/YAML_Schema_Design.md`](docs/YAML_Schema_Design.md)
 
 ```yaml
-meta:           # 剧本元信息
-characters:     # 全局角色字典（消歧后）
+meta: { title: "红岸", version: "v0.4" }
+characters:
+  - material_id: "C01"       # 🆕 v0.4: 人可读素材编号
+    canonical_name: "叶文洁"
 scenes:
-  - shots:      # 镜头列表（最小原子，直接可渲染）
-    - shot_type: "特写"
-      camera_movement: "推进"
-      visual_prompt: "Close-up of a young woman..."
-      dialogue: { character, line, emotion }
+  - material_id: "S01"
+    shots:
+      - shot_type: "特写"
+        camera_movement: "推进"
+        visual_prompt: "Close-up of a young woman..."
+        timeline:             # 🆕 v0.4: 镜头内时间轴分段
+          - "0-3s: 远景建立场景"
+          - "3-8s: 推进至近景"
+        dialogue: { character: "叶文洁", line: "...", emotion: "孤独" }
 ```
 
 ## 项目结构
@@ -171,12 +182,21 @@ looploop/
 | 数据校验 | Pydantic 2 | 强类型、贯穿全栈的单一真相源 |
 | 数据库 | SQLite + aiosqlite | 零配置、异步驱动、重启不丢数据 |
 | LLM | DeepSeek API (OpenAI SDK) | 中文强、结构化输出稳、成本低 |
-| 导出 | python-docx + PyYAML | Word / YAML 导出 |
+| 导出 | python-docx + PyYAML + zipfile | Zip / Manifest / YAML / Word |
 
 ## 设计文档
 
-- [YAML Schema 设计文档](docs/YAML_Schema_Design.md) — 字段详解 + 设计取舍
+- [YAML Schema 设计文档](docs/YAML_Schema_Design.md) — 字段详解 + 设计取舍 + v0.4 演进（第 8 章）
 - [测试经验总结](docs/Testing_Lessons.md) — Bug 根因分析 + 分层测试策略
+
+## 版本记录
+
+| 版本 | 日期 | 核心变更 |
+|------|------|----------|
+| v0.4.0 | 2026-06-06 | C/S/P 素材编号体系、Timeline 时间轴、运镜情绪提示、多文件 Zip 导出 |
+| v0.3.0 | 2026-06-05 | tiktoken 精准计数、增量角色消歧、SSE 日志流、文件拖拽 |
+| v0.2.0 | 2026-06-05 | SQLite 持久化、可拖拽面板、内联编辑、历史记录 |
+| v0.1.0 | 2026-06-05 | 核心 Pipeline、Pydantic 模型、基本 UI |
 
 ## License
 
