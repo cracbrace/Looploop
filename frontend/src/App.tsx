@@ -169,16 +169,6 @@ function App() {
     if (updated) saveScreenplay(taskId, updated).catch(() => {});
   }, [taskId, updateScreenplay]);
 
-  // 当前场景的所有段落索引 + 选中镜头的段落高亮
-  const sceneParagraphs: number[] = [];
-  const highlightedParagraphs: number[] = [];
-  if (screenplay && scene) {
-    for (const sh of scene.shots) sceneParagraphs.push(...sh.source_paragraphs);
-    if (selectedShotId)
-      for (const sh of scene.shots)
-        if (sh.shot_id === selectedShotId) highlightedParagraphs.push(...sh.source_paragraphs);
-  }
-
   const selectedShot = screenplay && selectedShotId
     ? screenplay.scenes.flatMap((s: any) => s.shots).find((sh: any) => sh.shot_id === selectedShotId) : null;
 
@@ -212,6 +202,16 @@ function App() {
   }
 
   const scene = screenplay.scenes[selectedSceneIndex];
+
+  // 当前场景的段落索引 + 选中镜头高亮 (必须在 scene 声明之后)
+  const sceneParagraphs: number[] = [];
+  const highlightedParagraphs: number[] = [];
+  if (scene) {
+    for (const sh of scene.shots) sceneParagraphs.push(...sh.source_paragraphs);
+    if (selectedShotId)
+      for (const sh of scene.shots)
+        if (sh.shot_id === selectedShotId) highlightedParagraphs.push(...sh.source_paragraphs);
+  }
 
   // ── Main ──
   return (
