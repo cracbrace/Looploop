@@ -218,7 +218,8 @@ class SceneMerger:
         # 角色名统一化
         character_canonical = ""
         character_id = ""
-        if raw.character and self.resolver:
+        # Guard: LLM 可能返回空 character 但有 line
+        if raw.character and raw.character.strip() and self.resolver:
             canonical = self.resolver.resolve_alias(raw.character, registry)
             if canonical:
                 character_canonical = canonical
@@ -232,9 +233,10 @@ class SceneMerger:
 
         # 构建 Dialogue
         dialogue = None
-        if raw.line.strip():
+        effective_character = character_canonical or raw.character.strip()
+        if raw.line.strip() and effective_character:
             dialogue = Dialogue(
-                character=character_canonical or raw.character,
+                character=effective_character,
                 character_id=character_id or "char_000",
                 line=raw.line,
                 emotion=raw.emotion or "neutral",
