@@ -43,6 +43,7 @@ export interface Shot {
 
 export interface Scene {
   scene_id: string;
+  material_id?: string;
   scene_number: number;
   location: string;
   time_of_day: string;
@@ -56,6 +57,7 @@ export interface Scene {
 
 export interface Character {
   character_id: string;
+  material_id?: string;
   canonical_name: string;
   aliases: string[];
   description: string;

@@ -214,9 +214,14 @@ class Scene(BaseModel):
 
     scene_id: str = Field(
         ...,
-        description="全局唯一场景 ID，如's01'",
+        description="机器内部唯一场景 ID，如's01'",
         pattern=r"^s\d{2}$",
         examples=["s01", "s02"],
+    )
+    material_id: str = Field(
+        default="",
+        description="人类可读素材编号，如'S01'",
+        examples=["S01", "S02"],
     )
     scene_number: int = Field(
         ...,
@@ -289,8 +294,13 @@ class Character(BaseModel):
 
     character_id: str = Field(
         ...,
-        description="唯一 ID，如'char_001'",
+        description="机器内部唯一 ID，如'char_001'",
         pattern=r"^char_\d{3}$",
+    )
+    material_id: str = Field(
+        default="",
+        description="人类可读素材编号，如'C01'。供下游画图/视频工具引用",
+        examples=["C01", "C02"],
     )
     canonical_name: str = Field(
         ...,

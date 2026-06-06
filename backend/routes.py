@@ -292,6 +292,44 @@ async def get_tasks():
     return await list_tasks()
 
 
+@router.get("/screenplay/{task_id}/export/manifest")
+async def export_manifest(task_id: str):
+    """导出素材清单 (C/S/P 编号体系)"""
+    task = await get_task(task_id)
+    if not task or not task.get("result"):
+        raise HTTPException(status_code=404, detail="剧本不存在")
+    data = task["result"]
+    manifest = {
+        "meta": {"title": data.get("meta", {}).get("title", ""), "version": "v0.4"},
+        "characters": {},
+        "scenes": {},
+    }
+    for c in data.get("characters", []):
+        mid = c.get("material_id", c.get("character_id", "?"))
+        manifest["characters"][mid] = {
+            "name": c.get("canonical_name", ""),
+            "aliases": c.get("aliases", []),
+            "role": c.get("role_type", ""),
+            "gender": c.get("gender", ""),
+            "age": c.get("age_range", ""),
+            "description": c.get("description", ""),
+        }
+    for s in data.get("scenes", []):
+        mid = s.get("material_id", s.get("scene_id", "?"))
+        manifest["scenes"][mid] = {
+            "location": s.get("location", ""),
+            "time_of_day": s.get("time_of_day", ""),
+            "atmosphere": s.get("atmosphere", ""),
+            "era": s.get("era", ""),
+            "weather": s.get("weather", ""),
+            "shot_count": len(s.get("shots", [])),
+        }
+    import yaml
+    yaml_str = yaml.dump(manifest, allow_unicode=True, sort_keys=False, default_flow_style=False, indent=2)
+    return Response(content=yaml_str, media_type="application/x-yaml",
+                    headers={"Content-Disposition": f"attachment; filename=manifest_{task_id}.yaml"})
+
+
 @router.patch("/tasks/{task_id}/title")
 async def rename_task(task_id: str, body: dict = {}):
     """重命名历史任务标题"""

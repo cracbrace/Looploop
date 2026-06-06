@@ -79,9 +79,10 @@ class SceneMerger:
                 shots=shots,
             ))
 
-        # Step 3: 编号重排
+        # Step 3: 编号重排（同时生成 material_id）
         for si, scene in enumerate(scenes):
             scene.scene_id = f"s{si + 1:02d}"
+            scene.material_id = f"S{si + 1:02d}"
             scene.scene_number = si + 1
             for sji, shot in enumerate(scene.shots):
                 shot.shot_id = f"{scene.scene_id}_{sji + 1:02d}"
@@ -106,11 +107,14 @@ class SceneMerger:
         Returns:
             完整的 Screenplay 对象
         """
-        # 转换角色
+        # 转换角色 (生成 material_id: C01, C02...)
         characters = []
+        char_index = 0
         for cid, rc in registry.items():
+            char_index += 1
             characters.append(Character(
                 character_id=cid,
+                material_id=f"C{char_index:02d}",
                 canonical_name=rc.canonical_name,
                 aliases=rc.aliases,
                 description=rc.description,
