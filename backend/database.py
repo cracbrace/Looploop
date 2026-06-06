@@ -140,6 +140,14 @@ def _row_to_dict(row: aiosqlite.Row) -> dict:
         except json.JSONDecodeError:
             d["result"] = None
         del d["result_json"]
+    # SQLite CURRENT_TIMESTAMP 始终返回 UTC 时间 (如 06:01) 且无时区标识。
+    # 直接贴 +08:00 标签会 "撒谎" — 浏览器会误以为 06:01 就是北京时间。
+    # 正确做法: Python 将 UTC 真正转为 Asia/Shanghai，再输出 ISO 8601。
+    if d.get("created_at"):
+        from datetime import datetime, timezone, timedelta
+        BEIJING = timezone(timedelta(hours=8))
+        utc_dt = datetime.strptime(d["created_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        d["created_at"] = utc_dt.astimezone(BEIJING).isoformat()
     # Keep original_text field, ensure it's a string
     if "original_text" not in d:
         d["original_text"] = ""
