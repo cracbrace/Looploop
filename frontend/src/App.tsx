@@ -483,14 +483,14 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
         // Only trigger if no chapters detected yet (DropZone takes priority)
         // Manually parse here using same logic as DropZone
         const norm = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-          .replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)/g, "\n$1")
+          .replace(/(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])/g, "\n$1")
           .replace(/\n{3,}/g, "\n\n").trim();
         const lines = norm.split("\n");
         const chs: any[] = [];
         let cur: any = null;
         for (let i = 0; i < lines.length; i++) {
           const t = lines[i].trim();
-          if (/^(第[一二三四五六七八九十百千\d]+[章节回]\b|Chapter\s+\d+)/m.test(t)) {
+          if (/^(第[一二三四五六七八九十百千\d]+[章节回]|Chapter\s+\d+)/m.test(t)) {
             if (cur) { cur.endLine = i; cur.text = lines.slice(cur.startLine, i).join("\n"); chs.push(cur); }
             cur = { index: chs.length, title: t.slice(0, 60), preview: "", selected: true, startLine: i, endLine: i, text: "" };
           } else if (cur && t && cur.preview.length < 80) {
