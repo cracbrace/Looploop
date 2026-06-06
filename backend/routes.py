@@ -1,23 +1,27 @@
 """
-Looploop API 路由
+Looploop API 路由 — v0.45 事件总线架构
 
-REST API 端点：文本转换、进度流、剧本查询、导出、单镜头重刷、历史管理。
-v0.2: 后端存储从内存 dict 迁移到 SQLite。
+REST API + SSE 事件推送。v0.45 关键变更：
+- NOTIFICATION_BUS: asyncio.Queue 替代 SQLite 轮询
+- _run_pipeline_v045: 单次 async for 驱动 Pipeline，结果就地持久化
 """
 
 import asyncio
+import io
 import json
 import re
 import uuid
+import zipfile
 from typing import Optional
 
+import yaml as _yaml
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field
 
 from backend.config import settings
 from backend.llm_client import LLMClient
-from backend.engine.pipeline import Pipeline
+from backend.engine.pipeline import Pipeline, PipelineStage
 from backend.safe_parser import SafeParser
 from backend.database import (
     create_task,
@@ -29,6 +33,11 @@ from backend.database import (
 )
 
 router = APIRouter(prefix="/api")
+
+# ═══════════════════════════════════════════════════════════
+# v0.45: 内存事件总线 — SSE 响应式推送，零 DB 轮询
+# ═══════════════════════════════════════════════════════════
+NOTIFICATION_BUS: dict[str, asyncio.Queue] = {}
 
 # 懒加载单例
 _llm: Optional[LLMClient] = None
@@ -62,19 +71,19 @@ def get_parser() -> SafeParser:
 # ============================================================
 
 class ConvertRequest(BaseModel):
-    text: str = Field(..., min_length=100, description="小说原文，至少 100 字符")
-    title: Optional[str] = Field(default=None, description="剧本标题")
-    author: Optional[str] = Field(default=None, description="原作者")
-    genre: Optional[str] = Field(default=None, description="类型标签")
+    text: str = Field(..., min_length=100)
+    title: Optional[str] = None
+    author: Optional[str] = None
+    genre: Optional[str] = None
 
 
 class RegenerateRequest(BaseModel):
-    user_feedback: str = Field(default="", description="用户修改意见")
-    current_screenplay: dict = Field(..., description="当前完整剧本")
+    user_feedback: str = ""
+    current_screenplay: dict
 
 
 class ScreenplayUpdate(BaseModel):
-    screenplay: dict = Field(..., description="编辑后的完整剧本")
+    screenplay: dict
 
 
 # ============================================================
@@ -83,60 +92,43 @@ class ScreenplayUpdate(BaseModel):
 
 @router.get("/health")
 async def health_check():
-    return {
-        "status": "ok",
-        "app": settings.app_name,
-        "version": settings.app_version,
-        "llm_model": settings.llm_model,
-    }
+    return {"status": "ok", "app": settings.app_name,
+            "version": "0.45.0", "llm_model": settings.llm_model}
 
 
 @router.post("/convert")
 async def convert_novel(request: ConvertRequest):
-    """提交小说文本，触发转换。返回 task_id。"""
+    """提交小说文本，启用事件总线并后台运行 Pipeline"""
     task_id = uuid.uuid4().hex[:12]
     title = request.title or "Untitled"
 
+    # 初始化数据库任务 + 事件总线队列
     await create_task(task_id, title, original_text=_normalize_original(request.text))
-    asyncio.create_task(_run_pipeline(task_id, request))
+    NOTIFICATION_BUS[task_id] = asyncio.Queue()
+
+    # 后台异步 Pipeline (单次调用，进度推送入队 + 结果持久化)
+    asyncio.create_task(_run_pipeline_v045(task_id, request))
 
     return {"task_id": task_id}
 
 
 @router.get("/convert/{task_id}/stream")
 async def stream_progress(task_id: str):
-    """SSE 端点——实时推送转换进度。"""
-    task = await get_task(task_id)
-    if not task:
+    """SSE — 响应式被动等待，由事件总线唤醒，零磁盘 I/O"""
+    queue = NOTIFICATION_BUS.get(task_id)
+    if queue is None:
         raise HTTPException(status_code=404, detail="任务不存在")
 
     async def event_generator():
-        last_progress = -1
-        while True:
-            task = await get_task(task_id)
-            if not task:
-                break
-            if task["status"] in ("done", "error"):
-                break
-            if task["progress"] != last_progress:
-                last_progress = task["progress"]
-                logs = task.get("data", {}).get("logs", []) if task.get("data") else []
-                event = {
-                    "stage": task.get("stage", ""),
-                    "message": task.get("message", ""),
-                    "progress": task["progress"],
-                }
-                if logs:
-                    event["logs"] = logs
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            await asyncio.sleep(0.3)
-
-        # 最终事件
-        task = await get_task(task_id)
-        if task and task["status"] == "done":
-            yield f"data: {json.dumps({'stage': 'done', 'message': task.get('message',''), 'progress': 1.0}, ensure_ascii=False)}\n\n"
-        elif task and task["status"] == "error":
-            yield f"data: {json.dumps({'stage': 'error', 'message': task.get('error','Unknown'), 'progress': task.get('progress',0)}, ensure_ascii=False)}\n\n"
+        try:
+            while True:
+                data = await queue.get()  # 挂起等待，由 Pipeline 推送唤醒
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                if data.get("stage") == "done" or data.get("stage") == "error":
+                    break
+        finally:
+            # 安全清理，防止内存泄漏
+            NOTIFICATION_BUS.pop(task_id, None)
 
     return StreamingResponse(
         event_generator(),
@@ -159,47 +151,34 @@ async def get_screenplay(task_id: str):
         raise HTTPException(status_code=500, detail=task.get("error", "转换失败"))
     if task["status"] != "done":
         return {"status": task["status"], "progress": task["progress"]}
-    result = task.get("result", {})
-    result["_original_text"] = task.get("original_text", "")
-    return result
+    return task.get("result", {})
 
 
 @router.get("/screenplay/{task_id}/export/yaml")
 async def export_yaml(task_id: str):
-    """导出 YAML 文件"""
     task = await get_task(task_id)
     if not task or not task.get("result"):
         raise HTTPException(status_code=404, detail="剧本不存在")
-
-    import yaml
-    yaml_str = yaml.dump(
-        task["result"], allow_unicode=True, sort_keys=False,
-        default_flow_style=False, indent=2,
-    )
-    return Response(
-        content=yaml_str, media_type="application/x-yaml",
-        headers={"Content-Disposition": f"attachment; filename=screenplay_{task_id}.yaml"},
-    )
+    yaml_str = _yaml.dump(task["result"], allow_unicode=True, sort_keys=False,
+                          default_flow_style=False, indent=2)
+    return Response(content=yaml_str, media_type="application/x-yaml",
+                    headers={"Content-Disposition": f"attachment; filename=screenplay_{task_id}.yaml"})
 
 
 @router.get("/screenplay/{task_id}/export/word")
 async def export_word(task_id: str):
-    """导出 Word 文档"""
     task = await get_task(task_id)
     if not task or not task.get("result"):
         raise HTTPException(status_code=404, detail="剧本不存在")
-
     from docx import Document
     data = task["result"]
     doc = Document()
     doc.styles["Normal"].font.name = "Microsoft YaHei"
-
     meta = data.get("meta", {})
     doc.add_heading(meta.get("title", "剧本"), 0)
     doc.add_paragraph(f"原著：{meta.get('source','')}  作者：{meta.get('author','')}")
     doc.add_paragraph(f"类型：{meta.get('genre','')}  总时长：{meta.get('total_duration_estimate','')}")
     doc.add_paragraph("")
-
     doc.add_heading("角色表", 1)
     table = doc.add_table(rows=1, cols=4)
     for i, text in enumerate(["角色", "类型", "性别", "描述"]):
@@ -211,125 +190,66 @@ async def export_word(task_id: str):
         row.cells[2].text = char.get("gender", "")
         row.cells[3].text = char.get("description", "")
     doc.add_paragraph("")
-
     for scene in data.get("scenes", []):
         doc.add_heading(f"场景 {scene.get('scene_number','')} · {scene.get('location','')}", level=2)
-        doc.add_paragraph(
-            f"时间：{scene.get('time_of_day','')}  氛围：{scene.get('atmosphere','')}  时长：{scene.get('duration_estimate','')}"
-        )
+        doc.add_paragraph(f"时间：{scene.get('time_of_day','')}  氛围：{scene.get('atmosphere','')}")
         for shot in scene.get("shots", []):
             p = doc.add_paragraph()
-            p.add_run(f"镜头 {shot.get('shot_number','')}  {shot.get('shot_type','')} · {shot.get('camera_movement','')}  {shot.get('duration','')}").bold = True
+            p.add_run(f"镜头 {shot.get('shot_number','')}  {shot.get('shot_type','')} · {shot.get('camera_movement','')}").bold = True
             dia = shot.get("dialogue")
-            if dia:
-                doc.add_paragraph(f"  {dia.get('character','')}（{dia.get('emotion','')}）：「{dia.get('line','')}」")
-
-    import io
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return Response(
-        content=buffer.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; filename=screenplay_{task_id}.docx"},
-    )
+            if dia: doc.add_paragraph(f"  {dia.get('character','')}：「{dia.get('line','')}」")
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return Response(content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f"attachment; filename=screenplay_{task_id}.docx"})
 
 
-@router.post("/shots/{scene_id}/{shot_id}/regenerate")
-async def regenerate_shot(scene_id: str, shot_id: str, request: RegenerateRequest):
-    """单镜头重刷——Human-in-the-Loop"""
-    screenplay = request.current_screenplay
-    target_shot, target_scene = None, None
-    for scene in screenplay.get("scenes", []):
-        for shot in scene.get("shots", []):
-            if shot.get("shot_id") == shot_id:
-                target_shot, target_scene = shot, scene
-                break
-
-    if not target_shot:
-        raise HTTPException(status_code=404, detail=f"Shot {shot_id} 不存在")
-
-    context_shots = []
-    if target_scene:
-        all_shots = target_scene.get("shots", [])
-        target_idx = next((i for i, s in enumerate(all_shots) if s.get("shot_id") == shot_id), -1)
-        if target_idx >= 0:
-            context_shots = all_shots[max(0, target_idx - 2):min(len(all_shots), target_idx + 3)]
-
-    prompt = f"""请重新生成以下镜头。
-
-原始镜头数据：
-```json
-{json.dumps(target_shot, ensure_ascii=False, indent=2)}
-```
-
-用户反馈：{request.user_feedback or '请自由发挥，生成更精彩的版本'}
-
-上下文镜头（仅供参考，不要修改）：
-```json
-{json.dumps(context_shots, ensure_ascii=False, indent=2)}
-```
-
-请只输出这个镜头的合法 JSON（字段包含 shot_id, shot_number, shot_type, camera_movement, focus_subject, visual_prompt, dialogue, duration 等）。"""
-
-    parser = get_parser()
-    try:
-        new_shot = await parser.validate_single_shot(
-            await get_llm().generate_json(prompt, temperature=0.5)
-        )
-        return {"shot": new_shot.model_dump()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"镜头重刷失败: {e}")
-
-
-# ============================================================
-# v0.2 新增：历史管理 + 编辑保存
-# ============================================================
-
-@router.get("/tasks")
-async def get_tasks():
-    """获取历史转换列表"""
-    return await list_tasks()
+@router.get("/screenplay/{task_id}/export/manifest")
+async def export_manifest(task_id: str):
+    task = await get_task(task_id)
+    if not task or not task.get("result"):
+        raise HTTPException(status_code=404, detail="剧本不存在")
+    data = task["result"]
+    manifest = {"meta": {"title": data.get("meta", {}).get("title", ""), "version": "v0.4"}, "characters": {}, "scenes": {}}
+    for c in data.get("characters", []):
+        mid = c.get("material_id", c.get("character_id", "?"))
+        manifest["characters"][mid] = {"name": c.get("canonical_name", ""), "aliases": c.get("aliases", []),
+                                        "role": c.get("role_type", ""), "gender": c.get("gender", ""),
+                                        "age": c.get("age_range", ""), "description": c.get("description", "")}
+    for s in data.get("scenes", []):
+        mid = s.get("material_id", s.get("scene_id", "?"))
+        manifest["scenes"][mid] = {"location": s.get("location", ""), "time_of_day": s.get("time_of_day", ""),
+                                    "atmosphere": s.get("atmosphere", ""), "shot_count": len(s.get("shots", []))}
+    yaml_str = _yaml.dump(manifest, allow_unicode=True, sort_keys=False, default_flow_style=False, indent=2)
+    return Response(content=yaml_str, media_type="application/x-yaml",
+                    headers={"Content-Disposition": f"attachment; filename=manifest_{task_id}.yaml"})
 
 
 @router.get("/screenplay/{task_id}/export/zip")
 async def export_zip(task_id: str):
-    """导出项目压缩包 (剧本 + 素材清单 + Word)"""
     task = await get_task(task_id)
     if not task or not task.get("result"):
         raise HTTPException(status_code=404, detail="剧本不存在")
-
-    import zipfile, io, yaml as _yaml
     data = task["result"]
     title = data.get("meta", {}).get("title", "screenplay")
     buf = io.BytesIO()
-
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # 剧本 YAML
-        yaml_str = _yaml.dump(data, allow_unicode=True, sort_keys=False,
-                              default_flow_style=False, indent=2)
-        zf.writestr(f"{title}_剧本.yaml", yaml_str.encode("utf-8"))
-
-        # 素材清单 YAML
+        zf.writestr(f"{title}_剧本.yaml", _yaml.dump(data, allow_unicode=True, sort_keys=False,
+                                                      default_flow_style=False, indent=2).encode("utf-8"))
         manifest = {"meta": {"title": title, "version": "v0.4"}, "characters": {}, "scenes": {}}
         for c in data.get("characters", []):
             mid = c.get("material_id", c.get("character_id", "?"))
-            manifest["characters"][mid] = {
-                "name": c.get("canonical_name", ""), "aliases": c.get("aliases", []),
-                "role": c.get("role_type", ""), "gender": c.get("gender", ""),
-                "age": c.get("age_range", ""), "description": c.get("description", ""),
-            }
+            manifest["characters"][mid] = {"name": c.get("canonical_name", ""), "aliases": c.get("aliases", []),
+                                            "role": c.get("role_type", ""), "gender": c.get("gender", ""),
+                                            "age": c.get("age_range", ""), "description": c.get("description", "")}
         for s in data.get("scenes", []):
             mid = s.get("material_id", s.get("scene_id", "?"))
-            manifest["scenes"][mid] = {
-                "location": s.get("location", ""), "time_of_day": s.get("time_of_day", ""),
-                "atmosphere": s.get("atmosphere", ""), "shot_count": len(s.get("shots", [])),
-            }
-        zf.writestr(f"{title}_素材清单.yaml", _yaml.dump(
-            manifest, allow_unicode=True, sort_keys=False, default_flow_style=False, indent=2
-        ).encode("utf-8"))
-
-        # Word 文档
+            manifest["scenes"][mid] = {"location": s.get("location", ""), "atmosphere": s.get("atmosphere", ""),
+                                        "shot_count": len(s.get("shots", []))}
+        zf.writestr(f"{title}_素材清单.yaml", _yaml.dump(manifest, allow_unicode=True, sort_keys=False,
+                                                        default_flow_style=False, indent=2).encode("utf-8"))
         from docx import Document
         doc = Document()
         doc.add_heading(title, 0)
@@ -344,53 +264,64 @@ async def export_zip(task_id: str):
         doc.save(word_buf)
         word_buf.seek(0)
         zf.writestr(f"{title}_剧本.docx", word_buf.read())
-
     buf.seek(0)
     return Response(content=buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": f"attachment; filename={title}_project.zip"})
 
 
-@router.get("/screenplay/{task_id}/export/manifest")
-async def export_manifest(task_id: str):
-    """导出素材清单 (C/S/P 编号体系)"""
-    task = await get_task(task_id)
-    if not task or not task.get("result"):
-        raise HTTPException(status_code=404, detail="剧本不存在")
-    data = task["result"]
-    manifest = {
-        "meta": {"title": data.get("meta", {}).get("title", ""), "version": "v0.4"},
-        "characters": {},
-        "scenes": {},
-    }
-    for c in data.get("characters", []):
-        mid = c.get("material_id", c.get("character_id", "?"))
-        manifest["characters"][mid] = {
-            "name": c.get("canonical_name", ""),
-            "aliases": c.get("aliases", []),
-            "role": c.get("role_type", ""),
-            "gender": c.get("gender", ""),
-            "age": c.get("age_range", ""),
-            "description": c.get("description", ""),
-        }
-    for s in data.get("scenes", []):
-        mid = s.get("material_id", s.get("scene_id", "?"))
-        manifest["scenes"][mid] = {
-            "location": s.get("location", ""),
-            "time_of_day": s.get("time_of_day", ""),
-            "atmosphere": s.get("atmosphere", ""),
-            "era": s.get("era", ""),
-            "weather": s.get("weather", ""),
-            "shot_count": len(s.get("shots", [])),
-        }
-    import yaml
-    yaml_str = yaml.dump(manifest, allow_unicode=True, sort_keys=False, default_flow_style=False, indent=2)
-    return Response(content=yaml_str, media_type="application/x-yaml",
-                    headers={"Content-Disposition": f"attachment; filename=manifest_{task_id}.yaml"})
+@router.post("/shots/{scene_id}/{shot_id}/regenerate")
+async def regenerate_shot(scene_id: str, shot_id: str, request: RegenerateRequest):
+    screenplay = request.current_screenplay
+    target_shot, target_scene = None, None
+    for scene in screenplay.get("scenes", []):
+        for shot in scene.get("shots", []):
+            if shot.get("shot_id") == shot_id:
+                target_shot, target_scene = shot, scene
+                break
+    if not target_shot:
+        raise HTTPException(status_code=404, detail=f"Shot {shot_id} 不存在")
+    context_shots = []
+    if target_scene:
+        all_shots = target_scene.get("shots", [])
+        target_idx = next((i for i, s in enumerate(all_shots) if s.get("shot_id") == shot_id), -1)
+        if target_idx >= 0:
+            context_shots = all_shots[max(0, target_idx - 2):min(len(all_shots), target_idx + 3)]
+    prompt = f"""请重新生成以下镜头。
+
+原始镜头数据：
+```json
+{json.dumps(target_shot, ensure_ascii=False, indent=2)}
+```
+
+用户反馈：{request.user_feedback or '请自由发挥，生成更精彩的版本'}
+
+上下文镜头（仅供参考，不要修改）：
+```json
+{json.dumps(context_shots, ensure_ascii=False, indent=2)}
+```
+
+请只输出这个镜头的合法 JSON。"""
+    parser = get_parser()
+    try:
+        new_shot = await parser.validate_single_shot(
+            await get_llm().generate_json(prompt, temperature=0.5)
+        )
+        return {"shot": new_shot.model_dump()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"镜头重刷失败: {e}")
+
+
+# ============================================================
+# 历史管理 + 编辑保存
+# ============================================================
+
+@router.get("/tasks")
+async def get_tasks():
+    return await list_tasks()
 
 
 @router.patch("/tasks/{task_id}/title")
 async def rename_task(task_id: str, body: dict = {}):
-    """重命名历史任务标题"""
     new_title = body.get("title", "").strip()
     if not new_title:
         raise HTTPException(status_code=422, detail="Title cannot be empty")
@@ -403,7 +334,6 @@ async def rename_task(task_id: str, body: dict = {}):
 
 @router.delete("/tasks/{task_id}")
 async def remove_task(task_id: str):
-    """删除历史任务"""
     task = await get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -413,7 +343,6 @@ async def remove_task(task_id: str):
 
 @router.patch("/screenplay/{task_id}")
 async def update_screenplay(task_id: str, body: ScreenplayUpdate):
-    """保存编辑后的剧本"""
     task = await get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -422,29 +351,16 @@ async def update_screenplay(task_id: str, body: ScreenplayUpdate):
 
 
 # ============================================================
-# Pipeline 后台执行
+# v0.45: 事件总线驱动 Pipeline
 # ============================================================
 
-def _normalize_original(text: str) -> str:
-    """在存储原始文本前，将内联章节标记物理拆分为独立段落。
-
-    text_splitter 的正则匹配依赖行首 ^ 锚点和换行符分隔，
-    但用户粘贴的文本可能章节之间无换行（如 "…信号。第二章…"）。
-    如果在存储时不拆开，前端的 paragraphs = text.split('\n\n') 会把
-    整篇小说当成一个巨型段落，导致 source_paragraphs 的 0 号索引覆盖全文。
-
-    此函数与 text_splitter._normalize 保持一致，确保前端段落索引与
-    Pipeline 提取的段落索引一一对应。
+async def _run_pipeline_v045(task_id: str, request: ConvertRequest):
     """
-    t = text.replace("\r\n", "\n").replace("\r", "\n")
-    # 在非行首的章节标记前插入两个换行，使其成为独立段落
-    t = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])", r"\n\n\1", t)
-    t = re.sub(r"(?<=[.?!\n])\s*(Chapter\s+\d+)", r"\n\n\1", t, flags=re.IGNORECASE)
-    return re.sub(r"\n{3,}", "\n\n", t).strip()
-
-
-async def _run_pipeline(task_id: str, request: ConvertRequest):
-    """后台执行 Pipeline，通过数据库更新进度"""
+    单次 async for 驱动 Pipeline。
+    每个阶段：写入数据库持久化 + 推送事件总线 queue。
+    最终阶段：Pipeline 产出 Screenplay，就地持久化到 SQLite。
+    """
+    queue = NOTIFICATION_BUS.get(task_id)
     try:
         pipeline = get_pipeline()
         meta_overrides = {}
@@ -458,40 +374,53 @@ async def _run_pipeline(task_id: str, request: ConvertRequest):
 
         await update_task(task_id, status="running")
 
-        async for stage in pipeline.run_with_progress(request.text, meta_overrides):
-            await update_task(
-                task_id,
-                status="running",
-                stage=stage.stage,
-                message=stage.message,
-                progress=stage.progress,
-                data=stage.data,
-            )
+        async for stage in pipeline.run_pipeline(request.text, meta_overrides):
+            # 1. 数据持久化到 SQLite
+            event_data = {"stage": stage.stage, "message": stage.message,
+                          "progress": stage.progress, "data": stage.data}
+            if stage.stage == "result":
+                # 最终阶段 — 持久化 Screenplay
+                sp: Screenplay = stage.data["screenplay"]
+                result_dict = sp.model_dump()
 
-        screenplay = await pipeline.run(request.text, meta_overrides)
+                # 回填标题
+                final_title = (
+                    sp.meta.title if sp.meta.title and sp.meta.title != "Untitled"
+                    else request.title or request.text.strip().split("\n")[0][:60]
+                )
+                await update_task(task_id, title=final_title, result=result_dict,
+                                  progress=1.0, stage="done", status="done",
+                                  message=stage.message)
 
-        # 回填标题：优先 LLM 生成的标题，其次用户提供的，最后用文本第一行
-        final_title = screenplay.meta.title if screenplay.meta.title and screenplay.meta.title != "Untitled" else None
-        if not final_title and request.title:
-            final_title = request.title
-        if not final_title:
-            first_line = request.text.strip().split("\n")[0][:60]
-            final_title = first_line or "Untitled"
+                event_data["stage"] = "done"
+                event_data["data"] = {"scenes": sp.meta.total_scenes,
+                                      "shots": sp.meta.total_shots,
+                                      "characters": len(sp.characters),
+                                      "duration": sp.meta.total_duration_estimate}
+            elif stage.stage == "character_update":
+                await update_task(task_id, status="running", stage=stage.stage,
+                                  message=stage.message, progress=stage.progress)
+                event_data["logs"] = stage.logs
+            else:
+                await update_task(task_id, status="running", stage=stage.stage,
+                                  message=stage.message, progress=stage.progress)
 
-        await update_task(
-            task_id,
-            title=final_title,
-            result=screenplay.model_dump(),
-            progress=1.0,
-            stage="done",
-            message=f"完成！{screenplay.meta.total_scenes}场景 {screenplay.meta.total_shots}镜头",
-            status="done",
-        )
+            # 2. 推入事件总线唤醒 SSE 消费者
+            await queue.put(event_data)
 
     except Exception as e:
-        await update_task(
-            task_id,
-            status="error",
-            error=str(e),
-            message=f"转换失败: {e}",
-        )
+        if queue:
+            await queue.put({"stage": "error", "message": str(e), "progress": 0})
+        await update_task(task_id, status="error", error=str(e),
+                          message=f"转换失败: {e}")
+    finally:
+        # 不在这里 pop queue — 由 SSE 消费者 cleanup
+        pass
+
+
+def _normalize_original(text: str) -> str:
+    """存储前将内联章节物理拆分为独立段落"""
+    t = text.replace("\r\n", "\n").replace("\r", "\n")
+    t = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回])", r"\n\n\1", t)
+    t = re.sub(r"(?<=[.?!\n])\s*(Chapter\s+\d+)", r"\n\n\1", t, flags=re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()

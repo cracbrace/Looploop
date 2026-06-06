@@ -362,7 +362,10 @@ async def test_pipeline_e2e_real_llm():
         return
 
     pipeline = Pipeline(llm)
-    sp = await pipeline.run(SAMPLE_TEXT)
+    sp = None
+    async for stage in pipeline.run_pipeline(SAMPLE_TEXT):
+        if stage.stage == "result":
+            sp = stage.data["screenplay"]
 
     # 结构完整性
     check("screenplay not none", sp is not None)
@@ -450,7 +453,8 @@ async def test_pipeline_empty_text():
 
     pipeline = Pipeline(llm)
     try:
-        await pipeline.run("")
+        async for _ in pipeline.run_pipeline(""):
+            pass
         check("empty text rejected", False, "should have raised")
     except (ValueError, Exception):
         check("empty text rejected", True)
