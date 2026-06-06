@@ -140,6 +140,11 @@ def _row_to_dict(row: aiosqlite.Row) -> dict:
         except json.JSONDecodeError:
             d["result"] = None
         del d["result_json"]
+    # SQLite CURRENT_TIMESTAMP 返回 "YYYY-MM-DD HH:MM:SS" 无时区信息，
+    # JS new Date() 在 Safari 中会按 UTC 解析导致时间偏移 8 小时。
+    # 显式标注 +08:00 确保所有浏览器正确显示北京时间。
+    if d.get("created_at"):
+        d["created_at"] = d["created_at"].replace(" ", "T") + "+08:00"
     # Keep original_text field, ensure it's a string
     if "original_text" not in d:
         d["original_text"] = ""
