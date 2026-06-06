@@ -253,6 +253,7 @@ class SceneMerger:
             sfx=raw.sfx if raw.sfx else None,
             bgm=raw.bgm if raw.bgm else None,
             duration=self._normalize_duration(raw.duration),
+            timeline=raw.timeline if raw.timeline else None,
             source_paragraphs=raw.source_paragraphs,
         )
 
