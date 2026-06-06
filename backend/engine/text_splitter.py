@@ -133,9 +133,13 @@ class TextSplitter:
     # ============================================================
 
     def _normalize(self, text: str) -> str:
-        """统一文本格式"""
+        """统一文本格式 + 修复内联章节标记"""
         # 统一换行为 \n
         text = text.replace("\r\n", "\n").replace("\r", "\n")
+        # 关键修复: 在非行首的章节标记前插入 \n，确保 ^ 锚点匹配
+        # 处理形如 "...信号。第二章 信号..." 的排版
+        text = re.sub(r"(?<=[。！？!?\n])\s*(第[一二三四五六七八九十百千\d]+[章节回]\b)", r"\n\1", text)
+        text = re.sub(r"(?<=[.?!\n])\s*(Chapter\s+\d+)", r"\n\1", text, flags=re.IGNORECASE)
         # 合并 3 个以上连续空行为 2 个
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
