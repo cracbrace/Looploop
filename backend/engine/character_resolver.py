@@ -210,103 +210,140 @@ class CharacterResolver:
         full_text: str = "",
     ) -> tuple[dict[str, ResolvedCharacter], list[str]]:
         """
-        后处理去重：扫描 registry 中指向同一人的重复条目并合并。
+        两阶段后处理去重：先 Python 硬合并，再 LLM 语义消歧。
 
         问题场景：77 个镜头的大文本中，"林震南" 在多个 Chunk 被 extractor
-        独立提取。增量消歧只在每批 3 个 Chunk 后运行，无法跨越批次做全局归并。
-        导致同一角色被分配 C01、C06、C08 等多个 ID。
-
-        修复策略：
-        1. 先按 canonical_name 做精确匹配去重（同名不同 ID 直接合并）
-        2. 再用 LLM 对整个 registry 做一次全局消歧（判断不同名是否同一人）
-        3. 最后用规则 clean up（移除空别名等）
+        独立提取，增量消歧无法跨批次归并，导致 C01、C06、C08 指向同一人。
         """
         logs = []
         if len(registry) <= 1:
             return registry, logs
 
-        # Step 1: 精确同名去重 — canonical_name 完全相同的条目合并 aliases
+        # ═══════════════════════════════════════════════════════
+        # Phase 1: 代码级精确同名去重 (Exact Match)
+        # 用 canonical_name 为 key 做确定性合并，无 LLM 参与。
+        # ═══════════════════════════════════════════════════════
+        name_to_id: dict[str, str] = {}     # canonical_name → 保留的 cid
         merged: dict[str, ResolvedCharacter] = {}
+
         for cid, char in registry.items():
             key = char.canonical_name.strip()
             if not key:
                 continue
-            if key not in merged:
+            if key not in name_to_id:
+                # 首次出现 — 记录为基准条目
+                name_to_id[key] = cid
                 merged[cid] = char
             else:
-                # 同名：合并 aliases，保留信息更丰富的条目
-                existing = merged[cid]
-                existing.aliases = list(set(existing.aliases + char.aliases))
-                if not existing.description and char.description:
-                    existing.description = char.description
-                if existing.role_type == "supporting" and char.role_type != "supporting":
-                    existing.role_type = char.role_type
-                if existing.gender == "other" and char.gender != "other":
-                    existing.gender = char.gender
-                if existing.age_range == "unknown" and char.age_range != "unknown":
-                    existing.age_range = char.age_range
-                logs.append(f'[CharacterResolver] 去重合并: 同名 "{key}" 的两个条目已合并 ({cid})')
+                # 重复条目 — 合并到基准条目
+                keeper_cid = name_to_id[key]
+                keeper = merged[keeper_cid]
+                keeper.aliases = list(set(keeper.aliases + char.aliases))
+                if not keeper.description and char.description:
+                    keeper.description = char.description
+                if keeper.role_type == "supporting" and char.role_type != "supporting":
+                    keeper.role_type = char.role_type
+                if keeper.gender == "other" and char.gender != "other":
+                    keeper.gender = char.gender
+                if keeper.age_range == "unknown" and char.age_range != "unknown":
+                    keeper.age_range = char.age_range
+                logs.append(f'[CharacterResolver] Phase1 同名合并: "{key}" ({cid}→{keeper_cid})')
 
-        # Step 2: LLM 全局消歧 — 识别不同 canonical_name 但指向同一人的情况
-        if len(merged) >= 2:
-            names_list = [
-                {"id": cid, "name": char.canonical_name, "aliases": char.aliases}
-                for cid, char in merged.items()
-            ]
-            try:
-                prompt = f"""以下是从一部小说中提取的所有角色。请检查是否有不同条目指向同一个人。
+        if len(merged) <= 1:
+            return self._renumber(merged), logs
 
-角色列表：
+        # ═══════════════════════════════════════════════════════
+        # Phase 2: LLM 语义消歧 (Semantic Match)
+        # 传入 LLM 的名单中每个 canonical_name 唯一。
+        # LLM 返回的是 canonical_name 组成的 merge_groups。
+        # 解析时用 name_to_id 字典定位 cid，彻底杜绝重名误杀。
+        # ═══════════════════════════════════════════════════════
+        # 重建 name_to_id（Phase 1 可能改变了映射）
+        name_to_id = {}
+        id_to_name: dict[str, str] = {}
+        for cid, char in merged.items():
+            key = char.canonical_name.strip()
+            name_to_id[key] = cid
+            id_to_name[cid] = key
+
+        names_list = [
+            {"id": cid, "name": char.canonical_name, "aliases": char.aliases}
+            for cid, char in merged.items()
+        ]
+
+        try:
+            prompt = f"""以下是一部小说提取后的所有唯一角色。请判断是否有不同名字实际指向同一人。
+
+角色列表（每个名字都是唯一的）：
 {json.dumps(names_list, ensure_ascii=False, indent=2)}
 
-请仔细判断：如果两个名字指向同一人（如"林教头"和"林震南"指同一人，"王队"和"王建国"指同一人），请将它们标记为同一组。
+注意：只合并你确信指向同一人的名字。例如小说中 "林教头" 和 "林震南" 是同一人，
+"王队" 和 "王建国" 是同一人。如果你不确定，宁可保留不合并。
 
 输出格式：
 ```json
 {{"merge_groups": [["林震南", "林教头", "林总镖头"], ["王建国", "王队"]]}}
-```
+```"""
 
-只输出确定指向同一人的组。如果不确定，宁可保留不合并。"""
+            result = await self.llm.generate_json(prompt, temperature=0.1)
+            data = json.loads(result)
+            merge_groups = data.get("merge_groups", [])
 
-                result = await self.llm.generate_json(prompt, temperature=0.1)
-                data = json.loads(result)
-                merge_groups = data.get("merge_groups", [])
+            for group in merge_groups:
+                if len(group) < 2:
+                    continue
 
-                for group in merge_groups:
-                    if len(group) < 2:
+                # 用 name_to_id 把所有名字映射到 cid（Phase 1 保证每个名字唯一）
+                group_cids: list[str] = []
+                for name in group:
+                    n = name.strip()
+                    cid = name_to_id.get(n)
+                    if cid and cid not in group_cids:
+                        group_cids.append(cid)
+
+                if len(group_cids) < 2:
+                    continue
+
+                # 第一个 cid 作为主条目，其余合并进去后删除
+                primary_cid = group_cids[0]
+                primary_char = merged.get(primary_cid)
+                if not primary_char:
+                    continue
+
+                for dup_cid in group_cids[1:]:
+                    dup_char = merged.get(dup_cid)
+                    if not dup_char:
                         continue
-                    # 找到组内第一个在 registry 中的条目的 cid，作为主条目
-                    primary_name = group[0].strip()
-                    primary_cid = None
-                    for cid, char in merged.items():
-                        if char.canonical_name.strip() == primary_name:
-                            primary_cid = cid
-                            break
-                    if not primary_cid:
-                        continue
+                    # 合并 aliases
+                    primary_char.aliases.append(dup_char.canonical_name)
+                    primary_char.aliases.extend(dup_char.aliases)
+                    primary_char.aliases = list(set(primary_char.aliases))
+                    # 合并属性
+                    if not primary_char.description and dup_char.description:
+                        primary_char.description = dup_char.description
+                    if primary_char.role_type == "supporting" and dup_char.role_type != "supporting":
+                        primary_char.role_type = dup_char.role_type
+                    # 删除重复条目
+                    del merged[dup_cid]
+                    logs.append(
+                        f'[CharacterResolver] Phase2 语义合并: '
+                        f'"{dup_char.canonical_name}" → "{primary_char.canonical_name}" ({dup_cid}→{primary_cid})'
+                    )
 
-                    # 将组内其他名字合并到主条目
-                    for alias_name in group[1:]:
-                        alias_clean = alias_name.strip()
-                        for cid, char in list(merged.items()):
-                            if char.canonical_name.strip() == alias_clean:
-                                merged[primary_cid].aliases.append(alias_clean)
-                                merged[primary_cid].aliases = list(set(merged[primary_cid].aliases))
-                                del merged[cid]
-                                logs.append(f'[CharacterResolver] LLM消歧合并: "{alias_clean}" → "{primary_name}"')
-                                break
+        except Exception as e:
+            logs.append(f'[CharacterResolver] Phase2 LLM跳过: {e}')
 
-            except Exception as e:
-                logs.append(f'[CharacterResolver] LLM全局消歧跳过: {e}')
+        # 重新编号
+        return self._renumber(merged), logs
 
-        # Step 3: 重新编号
+    def _renumber(self, merged: dict[str, ResolvedCharacter]) -> dict[str, ResolvedCharacter]:
+        """重新分配连续 ID，清理空别名"""
         final: dict[str, ResolvedCharacter] = {}
         for i, (_, char) in enumerate(merged.items()):
             cid = f"char_{i:03d}"
             char.aliases = [a for a in set(char.aliases) if a.strip() and a != char.canonical_name]
             final[cid] = char
-
-        return final, logs
+        return final
 
     async def _confirm_alias(self, alias: str, canonical: str, context: str) -> bool:
         """用 LLM 判断 alias 是否是 canonical 的别名"""
