@@ -21,7 +21,9 @@ Looploop 不是传统的"编剧辅助工具"。它的核心创新在于：**每�
 │  - 右侧下: 通栏原文面板  │   │  - Pydantic 自我修正  │
 │  - 双击编辑+单镜头重刷   │   │  - SQLite 持久化      │
 │  - C/S/P 素材编号+Timeline│   │  - 增量角色消歧       │
-│  - YAML/Word 导出      │   └─────────────────────┘
+│  - YAML/Manifest/Zip 导出│   │  - NOTIFICATION_BUS 事件总线│
+│  - SSE 心跳保活          │   │  - 逐 Chunk 独立重试     │
+│  - 15s ping 流式监控     │   │  - SafeParser 尾部闭合   │
 └───────────────────────┘
 ```
 
@@ -186,13 +188,15 @@ looploop/
 
 ## 设计文档
 
-- [YAML Schema 设计文档](docs/YAML_Schema_Design.md) — 字段详解 + 设计取舍 + v0.4 演进（第 8 章）
+- [YAML Schema 设计文档](docs/YAML_Schema_Design.md) — 字段详解 + 设计取舍 + v0.4/v0.5 演进
 - [测试经验总结](docs/Testing_Lessons.md) — Bug 根因分析 + 分层测试策略
+- [v0.5.0 终版压测报告](docs/v050_Stress_Test_Report.md) — 三轮对比 + 故障演进图谱
 
 ## 版本记录
 
 | 版本 | 日期 | 核心变更 |
 |------|------|----------|
+| v0.5.0 | 2026-06-07 | 事件总线架构、max_tokens=8192 防爆、逐 Chunk 重试、SafeParser 尾部闭合、SSE 15s 心跳 |
 | v0.4.0 | 2026-06-06 | C/S/P 素材编号体系、Timeline 时间轴、运镜情绪提示、多文件 Zip 导出 |
 | v0.3.0 | 2026-06-05 | tiktoken 精准计数、增量角色消歧、SSE 日志流、文件拖拽 |
 | v0.2.0 | 2026-06-05 | SQLite 持久化、可拖拽面板、内联编辑、历史记录 |
