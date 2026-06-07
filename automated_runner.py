@@ -18,7 +18,8 @@ async def run_single_stress(test_name: str, file_path: str):
 
     raw_text = open(file_path, "r", encoding="utf-8").read()
     
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    timeout_config = httpx.Timeout(timeout=600.0, read=None)  # 读不限时，防长 Pipeline 断开
+    async with httpx.AsyncClient(timeout=timeout_config) as client:
         print(f"🚀 [{test_name}] 正在向后端注入 {len(raw_text)} 字的文本...")
         start_time = time.time()
         

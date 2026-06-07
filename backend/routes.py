@@ -122,12 +122,15 @@ async def stream_progress(task_id: str):
     async def event_generator():
         try:
             while True:
-                data = await queue.get()  # 挂起等待，由 Pipeline 推送唤醒
-                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-                if data.get("stage") == "done" or data.get("stage") == "error":
-                    break
+                try:
+                    # 15s 心跳：Pipeline 长时间无推送时发 ping 维持链路
+                    data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    if data.get("stage") == "done" or data.get("stage") == "error":
+                        break
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"  # SSE 注释心跳，保活
         finally:
-            # 安全清理，防止内存泄漏
             NOTIFICATION_BUS.pop(task_id, None)
 
     return StreamingResponse(
