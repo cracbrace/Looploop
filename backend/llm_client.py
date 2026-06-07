@@ -95,6 +95,7 @@ class LLMClient:
                     model=self.model,
                     messages=messages,
                     temperature=temperature,
+                    max_tokens=8192,
                     response_format={"type": "json_object"},
                 )
                 content = response.choices[0].message.content
@@ -162,6 +163,7 @@ class LLMClient:
                     model=self.model,
                     messages=messages,
                     temperature=temperature,
+                    max_tokens=4096,
                 )
                 content = response.choices[0].message.content
                 if content is None:
@@ -198,6 +200,7 @@ class LLMClient:
             model=self.model,
             messages=messages,
             temperature=temperature,
+            max_tokens=8192,
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
@@ -222,6 +225,7 @@ class LLMClient:
             model=self.model,
             messages=messages,
             temperature=temperature,
+            max_tokens=4096,
         )
         content = response.choices[0].message.content
         if content is None:
