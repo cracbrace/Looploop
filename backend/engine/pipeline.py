@@ -116,17 +116,28 @@ class Pipeline:
                 data={"batch": batch_num, "total_batches": total_batches},
             )
 
-            # 并发提取当前批次
-            async def extract_one(chunk, idx: int):
-                return idx, await self.extractor.extract(
-                    chunk_text=chunk.text,
-                    chunk_id=chunk.chunk_id,
-                    chapter_index=chunk.chapter_index,
-                    character_registry=registry if registry else None,
-                    paragraph_offset=chunk.paragraph_start,
-                )
+            # v0.5: 逐 Chunk 独立提取 + 本地重试 (单 Chunk 失败不拖垮整批)
+            async def extract_one_robust(chunk, idx: int, max_retries: int = 2):
+                last_err = None
+                for attempt in range(max_retries + 1):
+                    try:
+                        result = await self.extractor.extract(
+                            chunk_text=chunk.text,
+                            chunk_id=chunk.chunk_id,
+                            chapter_index=chunk.chapter_index,
+                            character_registry=registry if registry else None,
+                            paragraph_offset=chunk.paragraph_start,
+                        )
+                        if result and result.scenes:
+                            return idx, result
+                        last_err = ValueError(f"Chunk {chunk.chunk_id}: 提取结果为空")
+                    except Exception as e:
+                        last_err = e
+                    if attempt < max_retries:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                raise last_err or RuntimeError(f"Chunk {chunk.chunk_id}: 提取失败")
 
-            batch_tasks = [extract_one(c, batch_start + i) for i, c in enumerate(batch)]
+            batch_tasks = [extract_one_robust(c, batch_start + i) for i, c in enumerate(batch)]
             batch_results = await asyncio.gather(*batch_tasks)
             batch_results.sort(key=lambda x: x[0])
             ordered_results.extend(batch_results)
