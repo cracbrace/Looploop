@@ -102,11 +102,19 @@ class SafeParser:
                 errors=errors,
             )
 
+        # v0.5: 送 LLM 前先尝试纯 Python 尾部闭合修复（省一次 LLM 调用）
+        auto_fixed = self._try_auto_close(raw_json)
+        if auto_fixed:
+            try:
+                return self._validate(auto_fixed)
+            except ValidationError:
+                pass  # 自动闭合不够，继续走 LLM 修复
+
         # 重试循环
         last_errors = errors
         for attempt in range(retries):
             try:
-                fix_prompt = self._build_fix_prompt(raw_json, last_errors, attempt)
+                fix_prompt = self._build_fix_prompt(raw_json if attempt == 0 else fixed_json, last_errors, attempt)
                 fixed_json = await self.llm.generate_json(
                     prompt=fix_prompt,
                     system_prompt=self.FIX_SYSTEM_PROMPT,
@@ -169,6 +177,38 @@ class SafeParser:
     # ============================================================
     # 内部方法
     # ============================================================
+
+    @staticmethod
+    def _try_auto_close(raw_json: str) -> str | None:
+        """智能尾部闭合：尝试自动补齐 LLM 截断缺失的 ] 和 } """
+        text = raw_json.strip()
+        if not text:
+            return None
+        # 统计开闭符号
+        open_braces = text.count("{") - text.count("}")
+        open_brackets = text.count("[") - text.count("]")
+        if open_braces == 0 and open_brackets == 0:
+            return None  # 不是截断问题
+        # 末尾可能卡在字符串中间（如 "key": "val），尝试去掉末尾不完整的引号
+        if text[-1] == '"' and text.count('"') % 2 != 0:
+            text = text[:-1]
+        # 补齐缺失的闭合符号（从内到外：先 ] 后 }）
+        fix = "]" * open_brackets + "}" * open_braces
+        if fix:
+            try:
+                json.loads(text + fix)
+                return text + fix
+            except json.JSONDecodeError:
+                pass
+        # 如果补齐后仍不合法，尝试去掉末尾几个字符再补（处理截断在字符串中间的情况）
+        for trim in range(1, min(20, len(text))):
+            try:
+                candidate = text[:-trim] + fix
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                continue
+        return None
 
     @staticmethod
     def _validate(raw_json: str) -> Screenplay:
