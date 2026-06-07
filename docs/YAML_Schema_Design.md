@@ -440,8 +440,9 @@ scenes:
 | v0.1.0 | 核心三层结构 Meta → Scene → Shot | ✅ |
 | v0.2.0 | SQLite 持久化、历史记录、内联编辑、可拖拽面板 | ✅ |
 | v0.3.0 | tiktoken 精准计数、增量角色消歧、SSE 日志流、文件拖拽 | ✅ |
-| v0.4.0 | C/S/P 素材编号、Timeline 时间轴、压缩包导出 | ✅ 当前 |
-| v0.5.0 | 多集续写、跨文件资产复用、尾帧延长机制 | 🔜 规划中 |
+| v0.4.0 | C/S/P 素材编号、Timeline 时间轴、压缩包导出 | ✅ |
+| v0.5.0 | 事件总线 + max_tokens=8192 + Chunk 重试 + SSE 心跳 | ✅ 当前 |
+| v0.6.0 | 多集续写、跨文件资产复用、尾帧延长机制 | 🔜 规划中 |
 
 ---
 
@@ -519,3 +520,41 @@ shots:
 ---
 
 > **Looploop v0.4 的本质**：一份结构化文档，同时被人类编辑、AI 画图、AI 视频三条管线并行消费。
+
+---
+
+## 9. v0.5.0 演进：异步长文本防爆架构
+
+v0.5.0 的核心命题是解决 7.6 万字以上长文本的 Pipeline 崩溃问题。这不是 Schema 层面的设计——字段定义无需任何变更——而是**运行时架构**的升级。
+
+### 9.1 从双调用到单次 Pipeline
+
+v0.4 以前，Pipeline 为了同时获取"进度流"和"最终结果"，被拆分为两次执行：`run_with_progress()` 产 SSE 事件，`run()` 产 Screenplay。每次执行都触发完整的 LLM 调用链，Token 资费翻倍。
+
+v0.5.0 将两者合并为单一的 `run_pipeline()` async generator：每个批次提取完成后立即 yield 进度事件，最终阶段 yield `stage="result"` + 完整 Screenplay。外部通过 `async for` 驱动，Token 消耗减半。
+
+### 9.2 NOTIFICATION_BUS 事件总线
+
+v0.4 的 SSE 端点内部是 `while True: await asyncio.sleep(0.3)` 的 SQLite 轮询循环。每当进度更新时读取数据库、序列化 JSON、推送给客户端。在高并发长文本场景下，SQLite 频繁发生锁竞争且 CPU 空转。
+
+v0.5.0 引入 `NOTIFICATION_BUS: dict[str, asyncio.Queue]` 内存事件总线：Pipeline 生产进度事件 → `await queue.put(data)` 即时推送 → SSE 消费者 `await queue.get()` 被数据唤醒。SQLite 降级为仅持久化快照，SSE 零磁盘 I/O。
+
+### 9.3 两阶段角色消歧 + 全局去重
+
+v0.4 的增量消歧（`resolve_incremental`）每 3 个 Chunk 运行一次，但不同批次之间不做跨批次归并。v0.5.0 新增 `CharacterResolver.deduplicate()` 作为全局后处理：
+
+- Phase 1：纯 Python 字典做同名合并（name_to_id 映射），零 LLM 开销
+- Phase 2：LLM 语义消歧，识别"林教头=林震南=林总镖头"等跨名称同人
+- 通过 `asyncio.to_thread()` 扔给线程池，防止阻塞事件循环
+
+### 9.4 三层防爆体系
+
+| 层级 | 机制 | 防护场景 |
+|------|------|----------|
+| 输出管道 | `max_tokens=8192` | LLM 单次输出物理上限翻倍 |
+| 本地容错 | 逐 Chunk 独立重试 (2 retry) | 单块失败不拖垮同批其他块 |
+| 尾部修复 | SafeParser `_try_auto_close()` | JSON 末尾缺失 `]}` 时 Python 规则补全 |
+
+### 9.5 SSE 15s 心跳
+
+Pipeline 等待 DeepSeek 响应时（单次 LLM 调用可达 80-120s），SSE 连接可能被客户端/代理判定为死连接。v0.5.0 在 SSE `event_generator` 中用 `asyncio.wait_for(queue.get(), timeout=15.0)` 包裹，超时则发送 `: ping\n\n`（SSE 注释行，浏览器不解析但维持 TCP 活跃）。配合客户端 `read=None` 不限读时，连接存活从 120s 提升至 386s+。
