@@ -1,4 +1,5 @@
 # Looploop（噜噜）
+demo：【AI小说转剧本议题项目| Looploop 噜噜】 https://www.bilibili.com/video/BV1XDE86sENi/?share_source=copy_web&vd_source=419dde5f5bb176e948dac9cd784e7cbe
 
 > AI 短剧全自动管线 —— 将小说转化为结构化导演指令
 
