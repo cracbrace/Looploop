@@ -346,8 +346,10 @@ function App() {
               </span>
             </div>
             <div className="flex-1 overflow-y-auto p-4 font-serif text-sm leading-relaxed text-zinc-400">
-              {paragraphs.length === 0 ? (
+              {(paragraphs.length === 0 && !originalText) ? (
                 <p className="text-zinc-600 text-xs">Original text not available for this session</p>
+              ) : paragraphs.length === 0 && originalText ? (
+                <p className="text-zinc-500 text-sm">{originalText}</p>
               ) : (
                 (() => {
                   const hs = new Set(highlightedParagraphs);

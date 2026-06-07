@@ -154,7 +154,9 @@ async def get_screenplay(task_id: str):
         raise HTTPException(status_code=500, detail=task.get("error", "转换失败"))
     if task["status"] != "done":
         return {"status": task["status"], "progress": task["progress"]}
-    return task.get("result", {})
+    result = task.get("result", {})
+    result["_original_text"] = task.get("original_text", "")
+    return result
 
 
 @router.get("/screenplay/{task_id}/export/yaml")
