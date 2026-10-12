@@ -1,0 +1,13 @@
+# Looploop 测试与开发依赖
+#
+# 运行环境只需要 backend/requirements.txt；本文件是测试 / CI 专属依赖。
+# 安装：
+#   pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+# --- 测试框架 ---
+pytest>=8.0
+pytest-asyncio>=0.24
+pytest-cov>=6.0
+
+# --- 报告（PR 12 接入 allure 时启用；先在此声明以保证环境一致）---
+allure-pytest>=2.13
