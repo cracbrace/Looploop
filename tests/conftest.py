@@ -1,7 +1,8 @@
 """
 Looploop pytest 全局 fixture 与共享测试数据。
 
-分层约定（对应旧 backend/test_pipeline.py 的 L1-L4）：
+分层约定（对应旧 backend/test_pipeline.py 的 L1-L4；该脚本已于 PR 07 退役，
+各测试文件头部保留了「旧函数 → 新用例」的迁移对照，作为覆盖零丢失的审计线索）：
     tests/unit/          L1 单元      —— 单个函数 / 数据模型的边界
     tests/integration/   L2 模块集成  —— 模块间的数据流与契约
     tests/api/           L4 接口      —— HTTP 端点行为（状态码矩阵 + 响应体格式）
