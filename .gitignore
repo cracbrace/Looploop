@@ -33,3 +33,7 @@ Desktop.ini
 
 # 测试产物
 .pytest_cache/
+
+# allure 报告产物（可随时重新生成，不入库）
+allure-results/
+allure-report/

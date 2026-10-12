@@ -20,9 +20,12 @@ L4 API：任务管理簇 4 个端点。
 
 from __future__ import annotations
 
+import allure
 import pytest
 
 from tests.fakes.fake_llm import make_valid_screenplay_dict
+
+pytestmark = [allure.feature("任务管理"), allure.severity(allure.severity_level.NORMAL)]
 
 #: `GET /api/tasks` 的响应契约（即 `database.list_tasks()` 的 SELECT 列）。
 #: 断言等集而非「包含」——多一个字段也应当在评审里被看见。

@@ -24,8 +24,11 @@ from __future__ import annotations
 import json
 import time
 
+import allure
 import httpx
 import pytest
+
+pytestmark = [allure.feature("SSE 进度流"), allure.severity(allure.severity_level.CRITICAL)]
 
 #: 心跳间隔注入值：把 15s 压到 0.1s，心跳测试才能在 1 秒内跑完
 FAST_HEARTBEAT = 0.1

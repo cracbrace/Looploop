@@ -208,6 +208,24 @@ pytest tests/e2e -v
 不会污染项目根的 `looploop.db`；离线用例通过 `tests/fakes/FakeLLM` 驱动完整
 Pipeline，零 API 成本。
 
+### allure 报告
+
+```bash
+# 1. 清理上一次的产物（不清的话陈旧的执行结果会混进新报告）
+powershell -ExecutionPolicy Bypass -File scripts/clean_allure.ps1
+
+# 2. 跑测试并产出 allure 原始结果
+pytest --alluredir=allure-results
+
+# 3. 查看（需自行安装 allure 命令行工具：https://allurereport.org/docs/install/）
+allure serve allure-results                                # 起本地服务直接看
+allure generate allure-results -o allure-report --clean    # 或生成静态报告
+```
+
+> `allure-results/` 与 `allure-report/` 已在 `.gitignore` 中，属可随时重生成的产物。
+> 用例按 `feature` 分组：转换接口 / SSE 进度流 / 镜头重刷 / 剧本查询与导出 /
+> 任务管理 / 健康检查 / 离线全链路；`severity` 区分关键路径与次要路径。
+
 > 完整的分层说明、mock 策略、覆盖率基线与 CI 状态见后续产出的
 > `docs/Testing_Strategy.md`。
 

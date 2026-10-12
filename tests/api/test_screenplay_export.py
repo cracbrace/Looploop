@@ -23,12 +23,15 @@ from __future__ import annotations
 import zipfile
 from io import BytesIO
 
+import allure
 import pytest
 import yaml
 from docx import Document
 
 from backend.models import Screenplay
 from tests.fakes.fake_llm import make_valid_screenplay_dict
+
+pytestmark = [allure.feature("剧本查询与导出"), allure.severity(allure.severity_level.NORMAL)]
 
 EXPORT_KINDS = ["yaml", "word", "manifest", "zip"]
 

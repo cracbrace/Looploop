@@ -151,3 +151,48 @@ def client(api_db, isolate_external_deps):
 def fake_llm() -> FakeLLM:
     """每个用例一个全新的 FakeLLM，调用记录互不串味（默认按 prompt 分发）。"""
     return FakeLLM()
+
+
+# ============================================================
+# allure 分层兜底标签
+# ============================================================
+
+#: 测试层目录 → allure feature 文案
+LAYER_FEATURES = {
+    "unit": "L1 单元",
+    "integration": "L2 模块集成",
+    "api": "L4 接口",
+    "e2e": "L3 端到端",
+}
+
+
+def pytest_collection_modifyitems(items):
+    """
+    给**没有** feature 标签的用例补上「所属测试层」标签。
+
+    为什么需要：`tests/api/` 与离线 E2E 用显式 `pytestmark = allure.feature(...)`
+    打了业务 feature（转换接口 / SSE 进度流 / …），但 unit、integration、smoke
+    里的用例没有标注，在 allure 报告里会掉进 "no feature" 组，
+    而验收要求「四层分组齐全」。
+
+    两点设计取舍：
+      1. **显式标注优先。** 只给没有 feature 标签的用例兜底，不会覆盖业务分组。
+         `allure.feature()` 在 pytest 里就是一个 `allure_label` mark
+         （见 `allure_pytest/helper.py::decorate_as_label`），因此可以直接探测。
+      2. **放在 conftest 而不是逐个文件手写。** 10 个文件各加两行 import + pytestmark
+         既啰嗦又容易漏；新增测试文件也该自动归位，而不是靠人记得写。
+
+    注：allure 报告的 **Suites 视图本来就按模块路径分组**（tests.unit / tests.api …），
+    所以四层即使不打标签也看得到；这里补 feature 是为了让 Behaviors 视图同样齐全。
+    """
+    for item in items:
+        present = {
+            str(mark.kwargs.get("label_type"))
+            for mark in item.iter_markers(name="allure_label")
+        }
+        if "feature" not in present:
+            layer = LAYER_FEATURES.get(item.path.parent.name, "冒烟 / 其他")
+            item.add_marker(pytest.mark.allure_label(layer, label_type="feature"))
+        if "severity" not in present:
+            # allure 的严重度默认值就是 normal；显式补上，报告里的 severity 筛选才完整
+            item.add_marker(pytest.mark.allure_label("normal", label_type="severity"))

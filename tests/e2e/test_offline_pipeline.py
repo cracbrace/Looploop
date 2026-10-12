@@ -29,10 +29,13 @@ from __future__ import annotations
 import json
 import time
 
+import allure
 import pytest
 
 from backend.models import Screenplay
 from tests.fakes.fake_llm import FAKE_CHARACTER, FAKE_DIALOGUE_LINE, FAKE_LOCATION
+
+pytestmark = [allure.feature("离线全链路"), allure.severity(allure.severity_level.CRITICAL)]
 
 #: 单条 SSE 流的消费上限（秒）
 SSE_DEADLINE_SECONDS = 10.0
