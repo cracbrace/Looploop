@@ -21,6 +21,7 @@ JSON 字符串而是 Mock 对象，Pydantic 校验当场炸，失败信息还是
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 from dataclasses import dataclass
@@ -215,6 +216,7 @@ class FakeLLM:
         extraction_payload: dict[str, Any] | None = None,
         merge_groups: Sequence[Sequence[str]] | None = None,
         same_person: bool = True,
+        delay_seconds: float = 0.0,
     ):
         """
         Args:
@@ -222,11 +224,14 @@ class FakeLLM:
             extraction_payload: 覆盖逐段提取的响应体。
             merge_groups: 语义消歧（deduplicate Phase 2）返回的合并组。
             same_person: `_confirm_alias` 的回答。
+            delay_seconds: 每次 `generate_json` 人为延迟的秒数。
+                用来制造「Pipeline 静默期」，验证 SSE 心跳确实发出（PR 10）。
         """
         self.responses: list[str] | None = list(responses) if responses is not None else None
         self.extraction_payload = extraction_payload
         self.merge_groups = [list(group) for group in (merge_groups or [])]
         self.same_person = same_person
+        self.delay_seconds = delay_seconds
 
         #: 每一次调用的现场记录——「mock 真的被走到」的可断言证据
         self.calls: list[FakeLLMCall] = []
@@ -255,6 +260,7 @@ class FakeLLM:
         max_retries: int = 2,
     ) -> str:
         self.calls.append(FakeLLMCall("generate_json", prompt, system_prompt, temperature))
+        await self._maybe_delay()
         return self._respond(prompt, system_prompt)
 
     async def generate_text(
@@ -295,6 +301,11 @@ class FakeLLM:
     # ------------------------------------------------------------
     # 内部分发
     # ------------------------------------------------------------
+
+    async def _maybe_delay(self) -> None:
+        """人为制造静默——用于验证「Pipeline 无推送时 SSE 心跳照发」（PR 10）。"""
+        if self.delay_seconds:
+            await asyncio.sleep(self.delay_seconds)
 
     def _next_scripted(self) -> str:
         if not self.responses:
