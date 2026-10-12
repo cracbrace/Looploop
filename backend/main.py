@@ -13,11 +13,39 @@ from backend.config import settings
 from backend.database import init_db
 from backend.routes import router
 
-# Windows 终端 UTF-8 编码修复
-if sys.platform == "win32":
+def _force_utf8(stream):
+    """
+    Windows 终端 UTF-8 编码修复。
+
+    优先用 in-place 的 `reconfigure()`：pytest 的捕获对象（`CaptureIO`）本身继承
+    `io.TextIOWrapper`，原地改编码不会夺走底层 buffer 的所有权。
+
+    旧写法 `io.TextIOWrapper(stream.buffer)` 会造出第二个持有同一 buffer 的 wrapper：
+    pytest 关闭它自己的 wrapper 后，我们那个就指向已关闭的文件，
+    导致 teardown 抛 `ValueError: I/O operation on closed file`（pytest 退出码 1）。
+    """
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+            return stream
+        except (ValueError, OSError, AttributeError):
+            pass
+
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        return stream
+    try:
+        return io.TextIOWrapper(buffer, encoding="utf-8", errors="replace")
+    except Exception:
+        return stream
+
+
+if sys.platform == "win32":
+    sys.stdout = _force_utf8(sys.stdout)
+    sys.stderr = _force_utf8(sys.stderr)
 
 
 @asynccontextmanager
