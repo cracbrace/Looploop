@@ -1,0 +1,64 @@
+name: frontend
+
+on:
+  push:
+    branches: [main, "test/**", "pr/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: vitest + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # lint 在 main 上已有 39 个既有错误（全部是 @typescript-eslint/no-explicit-any），
+      # 与本工作流无关。先设为不阻塞，避免一条历史债把整条 CI 常年染红；
+      # 清理完那批 any 之后把 continue-on-error 去掉即可变成硬门禁。
+      - name: Lint (non-blocking, 既有 39 个 no-explicit-any)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run lint
+
+      # 覆盖率阈值写在 vitest.config.ts 里（45/32/33/51），跌破即失败
+      - name: Unit tests with coverage
+        working-directory: frontend
+        run: npm test -- --coverage
+
+      # tsc -b + vite build：类型错误或构建失败都会红
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          if-no-files-found: warn
+
+  # 说明：Playwright E2E 暂不放进本工作流。
+  # 它需要额外下载 chromium（约 150MB）并拉起 dev server，单次约 1-2 分钟；
+  # 作为独立 job 加进来只需：
+  #   - run: npx playwright install --with-deps chromium
+  #   - run: npm run test:e2e
+  # 本地已可用 `npm run test:e2e` 跑通（见 frontend/e2e/）。
