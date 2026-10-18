@@ -73,6 +73,7 @@ def _seed_task(
     status: str = "pending",
     screenplay: dict | None = None,
     created_at: str | None = None,
+    error: str | None = None,
 ) -> None:
     """
     直接往隔离库里预置一条任务，**绕开 POST /convert**（因此不触发 Pipeline）。
@@ -89,10 +90,12 @@ def _seed_task(
 
     async def _run() -> None:
         await create_task(task_id, title)
-        if status != "pending" or screenplay is not None:
+        if status != "pending" or screenplay is not None or error is not None:
             kwargs: dict = {"status": status}
             if screenplay is not None:
                 kwargs.update(result=screenplay, progress=1.0, stage="done")
+            if error is not None:
+                kwargs["error"] = error
             await update_task(task_id, **kwargs)
         if created_at is not None:
             conn = await get_db()
@@ -126,18 +129,62 @@ def seeded_task(api_db) -> str:
     return task_id
 
 
+#: `completed_task` 的固定 id 与剧本标题（导出类断言需要「与源数据逐字段一致」的参照）
+COMPLETED_TASK_ID = "bbbb00000001"
+COMPLETED_SCREENPLAY_TITLE = "原始标题"
+
+
 @pytest.fixture
-def completed_task(api_db) -> str:
+def completed_task_screenplay() -> dict:
+    """`completed_task` 里那份剧本的原始内容——供「导出后应与之一致」的断言使用。"""
+    return make_valid_screenplay_dict(title=COMPLETED_SCREENPLAY_TITLE)
+
+
+@pytest.fixture
+def completed_task(api_db, completed_task_screenplay) -> str:
     """
     一个 status=done 且带合法剧本的任务。
 
     PR 09（剧本查询 / 导出）与 PR 11（单镜头重刷）都复用本 fixture——
     只有 done + result 齐备的任务才会被 `GET /api/screenplay/{id}` 原样返回。
     """
-    task_id = "bbbb00000001"
-    _seed_task(task_id, "已完成任务", status="done",
-              screenplay=make_valid_screenplay_dict(title="原始标题"))
+    _seed_task(COMPLETED_TASK_ID, "已完成任务", status="done",
+               screenplay=completed_task_screenplay)
+    return COMPLETED_TASK_ID
+
+
+@pytest.fixture
+def failed_task(api_db) -> str:
+    """一个 status=error 的任务，用于 `GET /api/screenplay` 的 500 分支。"""
+    task_id = "eeee00000001"
+    _seed_task(task_id, "失败任务", status="error", error="模拟管线崩溃")
     return task_id
+
+
+#: 标题为纯 ASCII 的已完成任务（见下方 fixture 的说明）
+ASCII_TASK_ID = "abcd00000001"
+
+
+@pytest.fixture
+def ascii_titled_screenplay() -> dict:
+    return make_valid_screenplay_dict(title="Ascii Screenplay")
+
+
+@pytest.fixture
+def ascii_titled_task(api_db, ascii_titled_screenplay) -> str:
+    """
+    一个标题为纯 ASCII 的 done 任务。
+
+    存在的理由：`export/zip` 把剧本标题拼进 `Content-Disposition` 的 filename，
+    而 Starlette 用 **latin-1** 编码 header 值——中文标题会让该端点直接抛
+    `UnicodeEncodeError`（500，见 test_screenplay_export 里对应的 xfail）。
+
+    为了让 ZIP 的**格式**断言（is_zipfile / 成员齐全 / 内嵌素材清单）继续跑，
+    就需要一份能通过 header 编码的输入。等缺陷修好，这个 fixture 就可以退休。
+    """
+    _seed_task(ASCII_TASK_ID, "ASCII task", status="done",
+               screenplay=ascii_titled_screenplay)
+    return ASCII_TASK_ID
 
 
 @pytest.fixture

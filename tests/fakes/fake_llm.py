@@ -162,6 +162,7 @@ def make_valid_screenplay(title: str = "假剧本 · FakeLLM") -> Screenplay:
         characters=[
             Character(
                 character_id="char_000",
+                material_id="C01",
                 canonical_name=FAKE_CHARACTER,
                 aliases=["小叶"],
                 description="FakeLLM 构造的测试角色",
@@ -173,6 +174,7 @@ def make_valid_screenplay(title: str = "假剧本 · FakeLLM") -> Screenplay:
         scenes=[
             Scene(
                 scene_id="s01",
+                material_id="S01",
                 scene_number=1,
                 location=FAKE_LOCATION,
                 time_of_day="night",
