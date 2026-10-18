@@ -19,6 +19,51 @@ from tests.fakes.fake_llm import make_valid_screenplay_dict
 
 
 @pytest.fixture
+def live_server(api_db, isolate_external_deps):
+    """
+    在后台线程里真起一个 uvicorn，返回它的 base URL（端口由系统分配）。
+
+    为什么必须有它：已实测 Starlette 的 `_TestClientTransport` 会把整个响应体收进
+    `io.BytesIO()` 再一次性交付。所以 TestClient **无法**证明「SSE 是边产生边到达的」，
+    也**无法**证明心跳在静默期真的送到了客户端 —— 而这正是前端
+    `fetch` + `ReadableStream` 增量解析进度条所依赖的性质。
+
+    与 monkeypatch 的配合：uvicorn 跑在同一进程的后台线程里，因此
+    `api_db`（DB_PATH 改写）与 `isolate_external_deps`（路由层单例重置 +
+    真实 LLM 守卫）的 patch 对服务器同样生效，不需要额外同步。
+    依赖顺序也保证了：服务器先停，monkeypatch 再还原。
+    """
+    import threading
+    import time as _time
+
+    import uvicorn
+
+    from backend.main import app
+
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=0, log_level="warning", access_log=False
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, name="looploop-live-server", daemon=True)
+    thread.start()
+
+    startup_deadline = _time.monotonic() + 15.0
+    while not server.started:
+        if _time.monotonic() > startup_deadline:
+            server.should_exit = True
+            raise RuntimeError("uvicorn 未能在 15s 内启动")
+        _time.sleep(0.02)
+
+    port = server.servers[0].sockets[0].getsockname()[1]
+
+    yield f"http://127.0.0.1:{port}"
+
+    server.should_exit = True
+    thread.join(timeout=10)
+    assert not thread.is_alive(), "uvicorn 线程未按时退出"
+
+
+@pytest.fixture
 def dispatched_pipelines(monkeypatch):
     """
     拦截后台 Pipeline 的派发：只记录调用，不真的执行。

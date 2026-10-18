@@ -8,6 +8,8 @@
 pytest>=8.0
 pytest-asyncio>=0.24
 pytest-cov>=6.0
+# 全局兜底超时：把「SSE/后台任务挂死」压成「测试失败」
+pytest-timeout>=2.3
 
 # --- 报告（PR 12 接入 allure 时启用；先在此声明以保证环境一致）---
 allure-pytest>=2.13

@@ -40,11 +40,19 @@ SSE_DEADLINE_SECONDS = 10.0
 
 def _consume_sse(client, task_id: str) -> tuple[str, list[dict]]:
     """
-    消费 SSE 流直到结束，返回 (content-type, 事件列表)。
+    消费**完整的** SSE 响应体，返回 (content-type, 事件列表)。
 
-    超时策略：路由在 Pipeline 静默时每 15s 发一条 `: ping` 心跳注释，
-    所以 `iter_lines()` 不会无限阻塞；每收到一行就检查 deadline，
-    最坏约 15s 就会以 AssertionError 收场，而不是把测试挂死。
+    ⚠️ 这不是流式消费，而是「等整个响应体收完再解析」。
+
+    实测（PR 10）：Starlette 的 `_TestClientTransport` 把响应体收进 `io.BytesIO()`
+    再一次性交付，`iter_lines()` 在生成器结束之前**一行都拿不到**。
+    因此下面的 deadline 检查只能对已缓冲的内容做事后判断，**挡不住挂死**：
+    若 SSE 生成器永不终止，`iter_lines()` 会一直阻塞，检查一次都执行不到
+    （实测过一次 300s 挂死，是被外层超时掐掉的，不是被这里）。
+
+    真正兜底的是 pytest.ini 里的全局 `timeout`（pytest-timeout），
+    它把「挂死」压成「失败」。需要验证「增量投递 / 心跳实时到达」的用例，
+    请用 `tests/api/conftest.py` 的 `live_server` fixture 走真 HTTP。
     """
     events: list[dict] = []
     deadline = time.monotonic() + SSE_DEADLINE_SECONDS
@@ -54,8 +62,10 @@ def _consume_sse(client, task_id: str) -> tuple[str, list[dict]]:
         content_type = response.headers.get("content-type", "")
 
         for line in response.iter_lines():
+            # 事后 sanity bound：能走到这里说明响应体已经收完，
+            # 它不会（也无法）拦截阻塞中的流。
             assert time.monotonic() < deadline, (
-                f"SSE 流消费超时（{SSE_DEADLINE_SECONDS}s），"
+                f"SSE 响应体消费耗时超过 {SSE_DEADLINE_SECONDS}s，"
                 f"已收到事件：{events}"
             )
             # 空行为 SSE 帧分隔符；": ..." 为注释心跳

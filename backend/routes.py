@@ -39,6 +39,11 @@ router = APIRouter(prefix="/api")
 # ═══════════════════════════════════════════════════════════
 NOTIFICATION_BUS: dict[str, asyncio.Queue] = {}
 
+#: SSE 心跳间隔（秒）。Pipeline 长时间无推送时发一条 `: ping` 注释保活。
+#: 提成模块级常量纯粹是为了可测：测试可以把它调小来验证心跳确实发出，
+#: 而不必真的坐等 15 秒。取值与原先的字面量 15.0 完全一致，行为不变。
+HEARTBEAT_INTERVAL_SECONDS = 15.0
+
 # 懒加载单例
 _llm: Optional[LLMClient] = None
 _pipeline: Optional[Pipeline] = None
@@ -123,8 +128,10 @@ async def stream_progress(task_id: str):
         try:
             while True:
                 try:
-                    # 15s 心跳：Pipeline 长时间无推送时发 ping 维持链路
-                    data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    # 心跳：Pipeline 长时间无推送时发 ping 维持链路
+                    data = await asyncio.wait_for(
+                        queue.get(), timeout=HEARTBEAT_INTERVAL_SECONDS
+                    )
                     yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
                     if data.get("stage") == "done" or data.get("stage") == "error":
                         break
