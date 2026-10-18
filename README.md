@@ -177,7 +177,11 @@ looploop/
 │   └── fakes/fake_llm.py        # LLM 测试替身 (FakeLLM)
 ├── docs/
 │   ├── YAML_Schema_Design.md    # Schema 设计文档
-│   └── Testing_Lessons.md       # 测试经验总结
+│   ├── Testing_Strategy.md      # 测试策略总纲（分层 / 门禁 / 变异 / CI）
+│   ├── Testing_Lessons.md       # 测试经验总结（踩坑与根因）
+│   └── Perf_Baseline.md         # 性能基线（Locust）
+├── locustfile.py                # 性能测试场景
+├── .github/workflows/           # CI：backend.yml / frontend.yml
 ├── examples/
 │   └── sample_novel.txt         # 示例小说 (3 章)
 └── README.md
@@ -185,7 +189,19 @@ looploop/
 
 ## 测试
 
-四层 pytest 测试套件（分层原则见 [测试经验总结](docs/Testing_Lessons.md)）。
+后端四层 pytest + 前端 Vitest/Playwright。完整的分层边界、替身策略、覆盖率门禁与
+变异测试方法见 [测试策略](docs/Testing_Strategy.md)。
+
+```
+L1 单元       19 个    无依赖          tests/unit
+L2 模块集成   18 个    无依赖          tests/integration
+L4 HTTP 接口  78 个    TestClient/uvicorn   tests/api
+L3 端到端     16 个    全栈 + Pipeline      tests/e2e（10 个需真实 key）
+```
+
+离线全量：**120 passed / 3 xfailed / 10 deselected，约 9 秒**。
+
+### 后端
 
 ```bash
 # 安装测试依赖
@@ -197,16 +213,59 @@ pytest -m "not llm"
 # 含真实 LLM 的端到端测试 —— 需要 .env 中配置 LLM_API_KEY
 pytest
 
-# 只跑某一层
-pytest tests/unit -v
-pytest tests/integration -v
-pytest tests/api -v
-pytest tests/e2e -v
+# 只跑某一层（--no-cov 避免覆盖率输出干扰）
+pytest tests/unit -v --no-cov
+pytest tests/integration -v --no-cov
+pytest tests/api -v --no-cov
+pytest tests/e2e -v --no-cov
+
+# 本地跑覆盖率门禁（CI 用的是这条）
+pytest -m "not llm" --cov-fail-under=65
 ```
 
 测试使用 pytest 的临时目录作为数据库（`DB_PATH` 被隔离 fixture 改写），
 不会污染项目根的 `looploop.db`；离线用例通过 `tests/fakes/FakeLLM` 驱动完整
 Pipeline，零 API 成本。
+
+### 前端
+
+```bash
+cd frontend
+npm install
+
+npm test                  # Vitest 全量（含 45/32/33/51 覆盖率阈值）
+npm test -- --coverage=false   # 单文件调试时关掉覆盖率
+npm run test:e2e          # Playwright（不启后端，page.route 拦截 /api/**）
+npm run build             # tsc -b + vite build
+```
+
+### 覆盖率
+
+| 端 | 基线 | 门禁 | 位置 |
+|---|---|---|---|
+| 后端 | 69% | 65% | CI（`--cov-fail-under=65`） |
+| 前端 | 47.09 / 33.67 / 35.5 / 53.7 | 45 / 32 / 33 / 51 | `frontend/vitest.config.ts` |
+
+后端门禁**不**写进 `pytest.ini`：`--cov-fail-under` 对任意一次运行生效，
+会让 `pytest tests/unit` 这类单层命令因为「只跑了一部分」直接失败。
+详见 [测试策略 §4](docs/Testing_Strategy.md)。
+
+### 性能测试
+
+```bash
+# 离线启动后端（避免压测触发真实 LLM 调用），再压
+locust -f locustfile.py --headless -u 10 -r 2 -t 30s --csv=perf_results
+```
+
+基线数字见 [性能基线](docs/Perf_Baseline.md)。
+
+### CI
+
+| Workflow | 内容 |
+|---|---|
+| `.github/workflows/backend.yml` | `pytest -m "not llm" --cov-fail-under=65` + 上传 `coverage.xml` |
+| `.github/workflows/frontend.yml` | `npm ci` → lint（非阻塞）→ `test --coverage` → `build` |
+
 
 ### allure 报告
 
@@ -233,7 +292,7 @@ allure generate allure-results -o allure-report --clean    # 或生成静态报�
 
 | 层 | 技术 | 理由 |
 |----|------|------|
-| 前端 | React 18 + Vite + Tailwind CSS 4 | 组件化、热更新、原子化 CSS |
+| 前端 | React 19 + Vite 8 + Tailwind CSS 4 | 组件化、热更新、原子化 CSS |
 | 布局 | 自定义像素拖拽 | 硬限幅 clamp(240, x, 500)，无第三方依赖 |
 | 后端 | FastAPI + Uvicorn | 原生 async、自动 Swagger、Pydantic 集成 |
 | 数据校验 | Pydantic 2 | 强类型、贯穿全栈的单一真相源 |
@@ -244,7 +303,9 @@ allure generate allure-results -o allure-report --clean    # 或生成静态报�
 ## 设计文档
 
 - [YAML Schema 设计文档](docs/YAML_Schema_Design.md) — 字段详解 + 设计取舍 + v0.4/v0.5 演进
+- [测试策略](docs/Testing_Strategy.md) — 分层边界 + 替身与隔离 + 覆盖率门禁 + 变异测试 + CI
 - [测试经验总结](docs/Testing_Lessons.md) — Bug 根因分析 + 分层测试策略
+- [性能基线](docs/Perf_Baseline.md) — Locust 场景 + P50/P95 基线
 - [v0.5.0 终版压测报告](docs/v050_Stress_Test_Report.md) — 三轮对比 + 故障演进图谱
 
 ## 版本记录
