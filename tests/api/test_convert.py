@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import re
 
+import allure
 import pytest
+
+pytestmark = [allure.feature("转换接口"), allure.severity(allure.severity_level.CRITICAL)]
 
 # uuid4().hex[:12] —— 12 位小写十六进制
 TASK_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")

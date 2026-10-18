@@ -12,6 +12,11 @@ L4 API：健康检查端点。
 
 from __future__ import annotations
 
+import allure
+import pytest
+
+pytestmark = [allure.feature("健康检查"), allure.severity(allure.severity_level.MINOR)]
+
 
 def test_health_reports_ok_and_metadata(client):
     """/api/health 返回 200，且 status/app 字段稳定（原 check("status 200"/"status ok"/"app name")）。"""

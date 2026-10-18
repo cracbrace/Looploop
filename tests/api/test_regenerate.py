@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 
+import allure
 import pytest
 
 from backend.models import Shot
@@ -36,6 +37,8 @@ from tests.fakes.fake_llm import (
     make_valid_screenplay_dict,
     make_valid_shot,
 )
+
+pytestmark = [allure.feature("镜头重刷"), allure.severity(allure.severity_level.CRITICAL)]
 
 TARGET_SHOT_ID = "s01_01"
 
