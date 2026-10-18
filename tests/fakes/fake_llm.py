@@ -57,6 +57,8 @@ MARKER_MERGE_GROUPS = "merge_groups"
 MARKER_SAME_PERSON = "same_person"
 #: ChapterExtractor 的逐段提取（输出格式模板里含 characters_found）
 MARKER_EXTRACTION = "characters_found"
+#: POST /api/shots/{scene_id}/{shot_id}/regenerate 的「重新生成镜头」请求
+MARKER_REGENERATE = "请重新生成"
 
 
 # ============================================================
@@ -144,6 +146,26 @@ def make_valid_shot(**overrides) -> dict[str, Any]:
         ),
         "duration": "8s",
     }
+    shot.update(overrides)
+    return shot
+
+
+def make_regenerated_shot(**overrides) -> dict[str, Any]:
+    """
+    重刷接口（Human-in-the-loop）返回的「新镜头」。
+
+    刻意在视觉上与原镜头**明显不同**（大特写 / 环绕 / 另一段 prompt / 6s）——
+    否则「新镜头确实替换了旧镜头」这类断言会因为新旧数据一模一样而失去意义。
+    """
+    shot = make_valid_shot(
+        shot_type="大特写",
+        camera_movement="环绕",
+        visual_prompt=(
+            "Macro shot of a trembling hand holding a printout, shallow depth of "
+            "field, cold blue light, 1969 China, cinematic"
+        ),
+        duration="6s",
+    )
     shot.update(overrides)
     return shot
 
@@ -336,6 +358,9 @@ class FakeLLM:
 
         if MARKER_MERGE_GROUPS in prompt:
             return json.dumps({"merge_groups": self.merge_groups}, ensure_ascii=False)
+
+        if MARKER_REGENERATE in prompt:
+            return json.dumps(make_regenerated_shot(), ensure_ascii=False)
 
         if MARKER_SAME_PERSON in prompt:
             return json.dumps({"same_person": self.same_person})
