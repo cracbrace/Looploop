@@ -13,3 +13,6 @@ pytest-timeout>=2.3
 
 # --- 报告（PR 12 接入 allure 时启用；先在此声明以保证环境一致）---
 allure-pytest>=2.13
+
+# --- 性能测试（PR 18，见 locustfile.py 与 docs/Perf_Baseline.md）---
+locust>=2.20
