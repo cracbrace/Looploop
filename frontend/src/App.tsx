@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useScreenplay } from "./hooks/useScreenplay";
 import { ShotCard } from "./components/ShotCard";
-import { Sidebar } from "./components/Sidebar";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { DropZone, ChapterTree } from "./components/DropZone";
 import { LogDrawer } from "./components/LogDrawer";
@@ -515,7 +514,8 @@ function InputView({ text, onChange, onSubmit, loading, progress, msg, chapters,
   chapters: Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>;
   setChapters: React.Dispatch<React.SetStateAction<Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>>>;
 }) {
-  const chapterTimer = useRef<ReturnType<typeof setTimeout>>();
+  // React 19 的 useRef 签名要求显式初始值：`useRef<T>()` 会报 TS2554
+  const chapterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleTextReady = (raw: string) => onChange(raw);
   const handleChaptersReady = (chs: Array<{ index: number; title: string; preview: string; selected: boolean; startLine: number; endLine: number; text: string }>) => setChapters(chs);
