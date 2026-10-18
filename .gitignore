@@ -30,3 +30,6 @@ Desktop.ini
 *.log
 *.tmp
 *.db
+
+# 测试产物
+.pytest_cache/
