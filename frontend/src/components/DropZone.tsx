@@ -36,7 +36,6 @@ export function DropZone({ onChaptersReady, onTextReady, disabled }: DropZonePro
     const lines = normalized.split("\n");
     const chapters: ChapterInfo[] = [];
     let currentChapter: ChapterInfo | null = null;
-    let chapterStartLine = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const trimmed = lines[i].trim();
@@ -47,7 +46,6 @@ export function DropZone({ onChaptersReady, onTextReady, disabled }: DropZonePro
           currentChapter.text = lines.slice(currentChapter.startLine, i).join("\n");
           chapters.push(currentChapter);
         }
-        chapterStartLine = i;
         currentChapter = {
           index: chapters.length,
           title: trimmed.slice(0, 60),
