@@ -41,3 +41,10 @@ allure-report/
 # 性能测试产物（locust --csv 输出，可随时重生成）
 perf_results*.csv
 perf_bad*.csv
+
+# 覆盖率产物（可随时重生成）
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+frontend/coverage/
