@@ -6,9 +6,12 @@ PR 01 smoke 测试。
   2. backend 包在 rootdir 下可导入（pytest.ini 的 pythonpath = . 生效）
   3. FastAPI 应用能启动到可响应 /api/health
 
-迁移期的验收标准是「新旧两套并存互不影响」：
+迁移期的验收标准曾是「新旧两套并存互不影响」：
     pytest                          → 本文件全绿
-    python backend/test_pipeline.py → 18/18 PASS（PR 07 才删除旧脚本）
+    python backend/test_pipeline.py → 18/18 PASS
+
+PR 02-05 完成 18 个用例的迁移后，PR 07 已删除自研的 `backend/test_pipeline.py`，
+**pytest 现在是本项目唯一的测试入口**。
 """
 
 from backend.main import app

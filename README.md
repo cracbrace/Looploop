@@ -150,7 +150,6 @@ looploop/
 │   ├── database.py          # SQLite 持久化 (aiosqlite)
 │   ├── safe_parser.py       # Pydantic 校验 + LLM 自我修正
 │   ├── routes.py            # REST API (转换/SSE/导出/历史/编辑)
-│   ├── test_pipeline.py     # 4 层 143 项测试
 │   └── engine/
 │       ├── pipeline.py          # 7 步 Pipeline 编排
 │       ├── text_splitter.py     # 滑动窗口文本切分
@@ -169,6 +168,13 @@ looploop/
 │           ├── Sidebar.tsx       # 场景/角色导航
 │           ├── HistoryPanel.tsx  # 历史记录面板
 │           └── SourcePanel.tsx   # 原文对照面板
+├── tests/                       # pytest 四层测试（见下方「测试」章节）
+│   ├── conftest.py              # 全局 fixture：SAMPLE_TEXT / 隔离 client / fake_llm
+│   ├── unit/                    # L1 单元测试
+│   ├── integration/             # L2 模块集成测试
+│   ├── api/                     # L4 HTTP 接口测试
+│   ├── e2e/                     # L3 端到端（真实 LLM + 离线 FakeLLM）
+│   └── fakes/fake_llm.py        # LLM 测试替身 (FakeLLM)
 ├── docs/
 │   ├── YAML_Schema_Design.md    # Schema 设计文档
 │   └── Testing_Lessons.md       # 测试经验总结
@@ -176,6 +182,34 @@ looploop/
 │   └── sample_novel.txt         # 示例小说 (3 章)
 └── README.md
 ```
+
+## 测试
+
+四层 pytest 测试套件（分层原则见 [测试经验总结](docs/Testing_Lessons.md)）。
+
+```bash
+# 安装测试依赖
+pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+# 离线全量测试 —— 不需要 API key，依赖真实 LLM 的用例会自动 SKIP
+pytest -m "not llm"
+
+# 含真实 LLM 的端到端测试 —— 需要 .env 中配置 LLM_API_KEY
+pytest
+
+# 只跑某一层
+pytest tests/unit -v
+pytest tests/integration -v
+pytest tests/api -v
+pytest tests/e2e -v
+```
+
+测试使用 pytest 的临时目录作为数据库（`DB_PATH` 被隔离 fixture 改写），
+不会污染项目根的 `looploop.db`；离线用例通过 `tests/fakes/FakeLLM` 驱动完整
+Pipeline，零 API 成本。
+
+> 完整的分层说明、mock 策略、覆盖率基线与 CI 状态见后续产出的
+> `docs/Testing_Strategy.md`。
 
 ## 技术栈
 
